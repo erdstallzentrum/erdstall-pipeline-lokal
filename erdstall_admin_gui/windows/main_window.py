@@ -230,7 +230,6 @@ class MainWindow(QMainWindow):
             self,
         )
         self._task_log_window.set_running("Running Fill Holes...")
-        self._task_log_window.append_log(f"Starting fill holes for {self.current_mesh_id}...")
 
         self._fill_thread = QThread()
         self._fill_worker = FillHolesWorker(self.current_mesh_id, settings)

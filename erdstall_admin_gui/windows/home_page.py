@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -65,20 +64,6 @@ class HomePage(QWidget):
         header_layout.addStretch()
 
         main_layout.addLayout(header_layout)
-
-        self.project_name_label = QLabel("Selected project: None")
-        self.project_name_label.setStyleSheet("font-size: 18px; font-weight: 600;")
-        main_layout.addWidget(self.project_name_label)
-
-        self.project_path_label = QLabel("Project folder: -")
-        self.project_path_label.setWordWrap(True)
-        self.project_path_label.setStyleSheet("color: #aaaaaa;")
-        main_layout.addWidget(self.project_path_label)
-
-        self.summary_label = QLabel("Select a project from the left sidebar.")
-        self.summary_label.setWordWrap(True)
-        main_layout.addWidget(self.summary_label)
-
         overview_box = QFrame()
         overview_box.setFrameShape(QFrame.StyledPanel)
         overview_layout = QVBoxLayout(overview_box)
@@ -185,8 +170,6 @@ class HomePage(QWidget):
 
         if not mesh_id:
             self.current_project_dir = None
-            self.project_name_label.setText("Selected project: None")
-            self.project_path_label.setText("Project folder: -")
             self.summary_label.setText("Select a project from the left sidebar.")
             for label in self.status_labels.values():
                 label.setText("—")
@@ -218,9 +201,6 @@ class HomePage(QWidget):
         path_json = project_dir / PATH_JSON_FILENAME
         path_points_csv = project_dir / PATH_POINTS_FILENAME
 
-        self.project_name_label.setText(f"Selected project: {self.current_mesh_id}")
-        self.project_path_label.setText(f"Project folder: {project_dir}")
-
         original_exists = original_mesh.exists()
         repaired_exists = repaired_mesh.exists()
         path_points_exists = path_points_csv.exists()
@@ -247,11 +227,6 @@ class HomePage(QWidget):
             path_json.exists(),
             path_points_csv.exists(),
         ])
-
-        self.summary_label.setText(
-            f"Project overview for {self.current_mesh_id}. "
-            f"{available_count}/9 tracked project assets are currently available."
-        )
 
         self._set_buttons_enabled(True)
         self.fill_holes_button.setEnabled(original_exists)

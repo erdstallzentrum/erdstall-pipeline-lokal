@@ -48,14 +48,6 @@ class HomePage(QWidget):
         header_layout = QHBoxLayout()
         header_layout.setSpacing(16)
 
-        self.logo_label = QLabel()
-        pixmap = QPixmap("public/Logo.png")
-        if not pixmap.isNull():
-            self.logo_label.setPixmap(
-                pixmap.scaled(140, 70, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            )
-        self.logo_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-
         title_layout = QVBoxLayout()
         title_layout.setSpacing(4)
 
@@ -71,7 +63,6 @@ class HomePage(QWidget):
         
         header_layout.addLayout(title_layout)
         header_layout.addStretch()
-        header_layout.addWidget(self.logo_label, 0, Qt.AlignTop)
 
         main_layout.addLayout(header_layout)
 

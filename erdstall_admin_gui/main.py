@@ -23,7 +23,7 @@ def main() -> int:
     progress_value = {"value": 0}
 
     def update_progress() -> None:
-        progress_value["value"] += 10
+        progress_value["value"] += 7
         splash.progress_bar.setValue(progress_value["value"])
         if progress_value["value"] >= 100:
             progress_timer.stop()

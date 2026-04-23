@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from .console_util import Spinner
 from collections.abc import Callable
 import pymeshlab
 

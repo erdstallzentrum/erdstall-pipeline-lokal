@@ -4,7 +4,6 @@ import asyncio
 import logging
 import shutil
 from pathlib import Path
-from .console_util import Spinner
 from .csv_to_json import csv_to_json_file
 import pymeshlab
 from collections.abc import Callable
@@ -104,14 +103,11 @@ def copy_inputs_to_workdir(mesh_path: Path, path_points_path: Path, work_dir: Pa
     """
     Copy mesh and path_points.csv into the temp work directory.
     """
-    spinner = Spinner("Copy inputs to work dir ...")
-    spinner.start()
     target_mesh = work_dir / FINAL_MESH
     target_points = work_dir / PATH_POINTS_FILENAME
 
     shutil.copy2(mesh_path, target_mesh)
     shutil.copy2(path_points_path, target_points)
-    spinner.stop("Copy inputs to work dir done")
     return target_mesh, target_points
 
 

@@ -7,7 +7,7 @@ from erdstall_admin_gui.windows.texture_window import TextureWindow
 from erdstall_admin_gui.windows.setup_window import SetupWindow
 from erdstall_admin_gui.windows.add_project_window import AddProjectWindow
 from erdstall_admin_gui.workers.init_worker import ProjectInitWorker
-from PySide6.QtCore import Qt, Slot, QThread
+from PySide6.QtCore import Qt,QThread
 from erdstall_admin_gui.windows.task_log_window import TaskLogWindow
 from erdstall_admin_gui.workers.patch_detection_worker import PatchDetectionWorker
 from erdstall_admin_gui.windows.add_path_points_window import AddPathPointsWindow
@@ -25,8 +25,11 @@ from PySide6.QtWidgets import (
     QWidget,
     QSizePolicy,
     QMessageBox,
+    QStyle
 )
 from erdstall_pipeline.config import PLY_DIR
+from erdstall_admin_gui.widgets.project_list_item_widget import ProjectListItemWidget
+import shutil
 
 
 class MainWindow(QMainWindow):
@@ -34,7 +37,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.current_mesh_id: str | None = None
-        self._init_thread: QThread | None = None
+        self._init_thread: QThread | None  = None
         self._init_worker: ProjectInitWorker | None = None
         self._task_log_window: TaskLogWindow | None = None
         self._patch_thread: QThread | None = None
@@ -56,7 +59,6 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
 
         self.project_list = QListWidget()
-        self.project_list.itemClicked.connect(self.on_project_selected)
 
         self.add_project_button = QPushButton("Add New")
         self.add_project_button.clicked.connect(self.open_add_project_window)
@@ -134,16 +136,63 @@ class MainWindow(QMainWindow):
         self.project_list.clear()
 
         PLY_DIR.mkdir(parents=True, exist_ok=True)
-
         for path in sorted(PLY_DIR.iterdir()):
-            if path.is_dir():
-                self.project_list.addItem(path.name)
-    
-    @Slot(QListWidgetItem)
-    def on_project_selected(self, item: QListWidgetItem)-> None:
-        self.current_mesh_id = item.text()
-        self.current_project_label.setText(f"Current projects: {self.current_mesh_id}")
+            if not path.is_dir():
+                continue
+            item = QListWidgetItem(self.project_list)
+            widget = ProjectListItemWidget(path.name)
+
+            trash_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon)
+            widget.delete_button.setIcon(trash_icon)
+
+            widget.selected.connect(self._select_project_by_name)
+            widget.delete_requested.connect(self.delete_project)
+
+            item.setSizeHint(widget.sizeHint())
+            self.project_list.addItem(item)
+            self.project_list.setItemWidget(item, widget)
+
+
+    def _select_project_by_name(self, project_name: str) -> None:
+        self.current_mesh_id = project_name
+        self.current_project_label.setText(f"Current project: {self.current_mesh_id}")
         self.home_page.set_project(self.current_mesh_id)
+
+    def delete_project(self, project_name: str) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Delete Project",
+            f"Are you sure you want to delete this project: '{project_name}'",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        project_path = PLY_DIR / project_name
+
+        if not project_path.exists():
+            QMessageBox.warning(self, "Not Found", f"Project folder '{project_name}' was not found.")
+            self.load_projects()
+            return
+
+        try:
+            shutil.rmtree(project_path)
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Deletion failed",
+                f"Could not delete project folder '{project_name}' due to {e}"
+            )
+            return
+
+        if self.current_mesh_id == project_name:
+            self.current_mesh_id = None
+            self.home_page.set_project(None)
+            self.current_project_label.setText("Current project: None")
+
+        self.load_projects()
 
     def get_current_mesh_id(self) -> str | None:
         return self.current_mesh_id
@@ -183,8 +232,6 @@ class MainWindow(QMainWindow):
         self._init_thread.start()
 
     def _on_project_init_success(self, message: str) -> None:
-        QMessageBox.information(self, "Succes", message)
-
         self.load_projects()
 
         if self._init_worker is not None:

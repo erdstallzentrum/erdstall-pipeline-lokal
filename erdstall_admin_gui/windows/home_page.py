@@ -111,7 +111,7 @@ class HomePage(QWidget):
         self.detect_patches_button = QPushButton("Detect Patches")
         self.detect_patches_button.clicked.connect(self.patch_detection_requested.emit)
 
-        self.path_points_button = QPushButton("Add Path Points CSV")
+        self.path_points_button = QPushButton("Add Path Points")
         self.path_points_button.clicked.connect(self.path_points_requested.emit)
 
         self.path_full_pipeline_button = QPushButton("Calculate Path")
@@ -170,7 +170,6 @@ class HomePage(QWidget):
 
         if not mesh_id:
             self.current_project_dir = None
-            self.summary_label.setText("Select a project from the left sidebar.")
             for label in self.status_labels.values():
                 label.setText("—")
                 label.setStyleSheet("font-weight: 600; color: #aaaaaa;")
@@ -216,17 +215,6 @@ class HomePage(QWidget):
         self._set_status("Path JSON", path_json.exists())
         self._set_status("Path points CSV", path_points_exists)
 
-        available_count = sum([
-            original_exists,
-            repaired_mesh.exists(),
-            final_mesh.exists(),
-            mobile_mesh.exists(),
-            patches_dir.exists() and patches_dir.is_dir(),
-            textures_dir.exists() and textures_dir.is_dir(),
-            backup_dir.exists() and backup_dir.is_dir(),
-            path_json.exists(),
-            path_points_csv.exists(),
-        ])
 
         self._set_buttons_enabled(True)
         self.fill_holes_button.setEnabled(original_exists)

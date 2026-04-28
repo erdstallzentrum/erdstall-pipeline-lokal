@@ -41,9 +41,10 @@ class FillHolesWorker(QObject):
                 log_callback=self.log.emit,
             )
 
-            self.log.emit("Reducing repaired mesh file size...")
-            reduce_file_size(str(repaired), initial_mesh_reduction=True)
-            self.log.emit("Mesh reduction done.")
+            if self.settings.reduce_size:
+                self.log.emit("Reducing repaired mesh file size...")
+                reduce_file_size(str(repaired), initial_mesh_reduction=True)
+                self.log.emit("Mesh reduction done.")
 
             self.log.emit("Running finalize...")
             final_mesh = run_finalize(self.mesh_id)

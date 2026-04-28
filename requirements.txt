@@ -11,3 +11,5 @@ PySide6
 pyqtdarktheme
 trimesh
 networkx
+open3d
+scikit-image

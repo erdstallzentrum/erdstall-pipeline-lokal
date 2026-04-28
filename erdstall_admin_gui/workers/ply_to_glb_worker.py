@@ -13,9 +13,212 @@ class PlyToGlbWorker(QObject):
     log = Signal(str)
     success = Signal(str)
 
-    def __init__(self, mesh_id: str) -> None:
+    def __init__(
+        self,
+        mesh_id: str,
+        add_human_scale: bool = True,
+        human_model_path: str | Path = "public/person.glb",
+        human_height: float = 1.70,
+        human_floor_offset: float = 0.02,
+        human_up_axis: str = "y",
+    ) -> None:
         super().__init__()
+
         self.mesh_id = mesh_id
+        self.add_human_scale = add_human_scale
+        self.human_model_path = Path(human_model_path)
+        self.human_height = human_height
+        self.human_floor_offset = human_floor_offset
+        self.human_up_axis = human_up_axis
+
+    def _force_vertex_colors_opaque(self, mesh: trimesh.Trimesh) -> None:
+        if not hasattr(mesh.visual, "vertex_colors"):
+            return
+
+        vertex_colors = np.asarray(mesh.visual.vertex_colors)
+
+        if vertex_colors.size == 0:
+            return
+
+        vertex_colors = vertex_colors.copy()
+
+        if vertex_colors.shape[1] == 3:
+            alpha = np.full(
+                (vertex_colors.shape[0], 1),
+                255,
+                dtype=vertex_colors.dtype,
+            )
+            vertex_colors = np.hstack((vertex_colors, alpha))
+        elif vertex_colors.shape[1] >= 4:
+            vertex_colors[:, 3] = 255
+
+        mesh.visual.vertex_colors = vertex_colors
+
+    def _clean_mesh(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        mesh.remove_unreferenced_vertices()
+        mesh.remove_infinite_values()
+
+        unique_face_mask = mesh.unique_faces()
+        mesh.update_faces(unique_face_mask)
+        mesh.remove_unreferenced_vertices()
+
+        non_degenerate_mask = mesh.area_faces > 0
+        mesh.update_faces(non_degenerate_mask)
+        mesh.remove_unreferenced_vertices()
+
+        return mesh
+
+    def _combined_bounds(
+        self,
+        geometries: list[trimesh.Trimesh],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        mins = []
+        maxs = []
+
+        for geometry in geometries:
+            mins.append(geometry.bounds[0])
+            maxs.append(geometry.bounds[1])
+
+        return np.min(np.vstack(mins), axis=0), np.max(np.vstack(maxs), axis=0)
+
+    def _load_human_model(
+        self,
+        human_path: Path,
+        target_height: float,
+        up_axis: str,
+    ) -> list[trimesh.Trimesh]:
+        loaded = trimesh.load(human_path, process=False, force="scene")
+
+        if isinstance(loaded, trimesh.Scene):
+            geometries = list(loaded.dump(concatenate=False))
+        elif isinstance(loaded, trimesh.Trimesh):
+            geometries = [loaded]
+        else:
+            raise ValueError("Human model is not a valid mesh or scene.")
+
+        geometries = [
+            geometry
+            for geometry in geometries
+            if isinstance(geometry, trimesh.Trimesh) and len(geometry.faces) > 0
+        ]
+
+        if not geometries:
+            raise ValueError("Human model contains no valid mesh geometry.")
+
+        up_axis = up_axis.lower().strip()
+
+        if up_axis == "y":
+            y_to_z = trimesh.transformations.rotation_matrix(
+                np.radians(90),
+                [1, 0, 0],
+            )
+            for geometry in geometries:
+                geometry.apply_transform(y_to_z)
+
+        elif up_axis == "x":
+            x_to_z = trimesh.transformations.rotation_matrix(
+                np.radians(-90),
+                [0, 1, 0],
+            )
+            for geometry in geometries:
+                geometry.apply_transform(x_to_z)
+
+        elif up_axis == "z":
+            pass
+
+        else:
+            raise ValueError("human_up_axis must be 'x', 'y', or 'z'.")
+
+        human_min, human_max = self._combined_bounds(geometries)
+        current_height = float(human_max[2] - human_min[2])
+
+        if current_height <= 0:
+            raise ValueError("Human model has invalid height.")
+
+        scale = target_height / current_height
+
+        for geometry in geometries:
+            geometry.apply_scale(scale)
+
+        return geometries
+
+    def _place_human_next_to_mesh(
+            self,
+            human_geometries: list[trimesh.Trimesh],
+            mesh: trimesh.Trimesh,
+            human_height: float,
+            floor_offset: float,
+    ) -> None:
+        mesh_min, mesh_max = mesh.bounds
+        mesh_size = mesh_max - mesh_min
+
+        human_min, human_max = self._combined_bounds(human_geometries)
+        human_center = (human_min + human_max) * 0.5
+
+        target_x = mesh_min[0] + mesh_size[0] * 0.05
+
+        # smaller value = closer to model
+        target_y = mesh_min[1] - human_height * 0.05
+
+        target_z = mesh_min[2] + floor_offset
+
+        translation = np.array(
+            [
+                target_x - human_center[0],
+                target_y - human_center[1],
+                target_z - human_min[2],
+            ],
+            dtype=float,
+        )
+
+        for geometry in human_geometries:
+            geometry.apply_translation(translation)
+
+        self.log.emit(
+            "Human model placed at "
+            f"x={target_x:.3f}, y={target_y:.3f}, z={target_z:.3f}"
+        )
+
+    def _make_double_sided_opaque(self, tree: dict) -> dict:
+        materials = tree.setdefault("materials", [])
+
+        default_material_index = len(materials)
+
+        materials.append(
+            {
+                "name": "Default_VertexColor_White_DoubleSided_Opaque",
+                "doubleSided": True,
+                "alphaMode": "OPAQUE",
+                "pbrMetallicRoughness": {
+                    "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
+                    "metallicFactor": 0.0,
+                    "roughnessFactor": 1.0,
+                },
+            }
+        )
+
+        for material in materials:
+            material["doubleSided"] = True
+            material["alphaMode"] = "OPAQUE"
+
+            if "alphaCutoff" in material:
+                del material["alphaCutoff"]
+
+            pbr = material.setdefault("pbrMetallicRoughness", {})
+            base_color = pbr.setdefault("baseColorFactor", [1.0, 1.0, 1.0, 1.0])
+
+            while len(base_color) < 4:
+                base_color.append(1.0)
+
+            base_color[3] = 1.0
+
+
+        for mesh_data in tree.get("meshes", []):
+            for primitive in mesh_data.get("primitives", []):
+                if "material" not in primitive:
+                    primitive["material"] = default_material_index
+
+        return tree
 
     @Slot()
     def run(self) -> None:
@@ -49,89 +252,70 @@ class PlyToGlbWorker(QObject):
                 )
 
             self.log.emit(
-                f"Loaded mesh: {len(mesh.vertices):,} vertices, {len(mesh.faces):,} faces."
+                f"Loaded mesh: {len(mesh.vertices):,} vertices, "
+                f"{len(mesh.faces):,} faces."
             )
 
-            self.log.emit("Forcing vertex colors to opaque...")
-            if hasattr(mesh.visual, "vertex_colors") and mesh.visual.vertex_colors is not None:
-                vertex_colors = np.asarray(mesh.visual.vertex_colors).copy()
+            self.log.emit("Forcing mesh vertex colors to opaque...")
+            self._force_vertex_colors_opaque(mesh)
 
-                if vertex_colors.size > 0:
-                    if vertex_colors.shape[1] == 3:
-                        alpha = np.full((vertex_colors.shape[0], 1), 255, dtype=vertex_colors.dtype)
-                        vertex_colors = np.hstack((vertex_colors, alpha))
-                    elif vertex_colors.shape[1] >= 4:
-                        vertex_colors[:, 3] = 255
+            self.log.emit("Cleaning mesh...")
+            mesh = self._clean_mesh(mesh)
+            self.log.emit(
+                f"After cleanup: {len(mesh.vertices):,} vertices, "
+                f"{len(mesh.faces):,} faces."
+            )
 
-                    mesh.visual.vertex_colors = vertex_colors
+            geometries: list[tuple[str, trimesh.Trimesh]] = [("mesh", mesh)]
 
-            self.log.emit("Rotating mesh...")
+            if self.add_human_scale:
+                if self.human_model_path.exists():
+                    self.log.emit(f"Loading human scale model: {self.human_model_path}")
+
+                    human_geometries = self._load_human_model(
+                        human_path=self.human_model_path,
+                        target_height=self.human_height,
+                        up_axis=self.human_up_axis,
+                    )
+
+                    self._place_human_next_to_mesh(
+                        human_geometries=human_geometries,
+                        mesh=mesh,
+                        human_height=self.human_height,
+                        floor_offset=self.human_floor_offset,
+                    )
+
+                    for index, human_geometry in enumerate(human_geometries):
+                        geometries.append((f"human_scale_{index}", human_geometry))
+
+                    self.log.emit("Human scale model added.")
+                else:
+                    self.log.emit(
+                        f"Human scale model not found, skipping: {self.human_model_path}"
+                    )
+
+            self.log.emit("Rotating mesh and optional human model...")
             rotation = trimesh.transformations.rotation_matrix(
                 np.radians(-90),
                 [1, 0, 0],
             )
-            mesh.apply_transform(rotation)
-            self.log.emit("Rotating mesh done.")
 
-            self.log.emit("Cleaning mesh...")
-            mesh.remove_unreferenced_vertices()
-            mesh.remove_infinite_values()
+            for _, geometry in geometries:
+                geometry.apply_transform(rotation)
 
-            unique_face_mask = mesh.unique_faces()
-            mesh.update_faces(unique_face_mask)
-            mesh.remove_unreferenced_vertices()
+            self.log.emit("Rotation done.")
 
-            non_degenerate_mask = mesh.area_faces > 0
-            mesh.update_faces(non_degenerate_mask)
-            mesh.remove_unreferenced_vertices()
+            self.log.emit("Building GLB scene...")
+            scene = trimesh.Scene()
 
-            self.log.emit(
-                f"After cleanup: {len(mesh.vertices):,} vertices, {len(mesh.faces):,} faces."
-            )
+            for name, geometry in geometries:
+                scene.add_geometry(geometry, geom_name=name)
 
-            self.log.emit("Exporting double-sided opaque GLB...")
-
-            scene = trimesh.Scene(mesh)
-
-            def make_double_sided(tree):
-                materials = tree.setdefault("materials", [])
-
-                if not materials:
-                    materials.append(
-                        {
-                            "name": "Default_DoubleSided_Opaque",
-                            "doubleSided": True,
-                            "alphaMode": "OPAQUE",
-                            "pbrMetallicRoughness": {
-                                "baseColorFactor": [1.0, 1.0, 1.0, 1.0],
-                                "metallicFactor": 0.0,
-                                "roughnessFactor": 1.0,
-                            },
-                        }
-                    )
-
-                    for mesh_data in tree.get("meshes", []):
-                        for primitive in mesh_data.get("primitives", []):
-                            primitive["material"] = 0
-                else:
-                    for material in materials:
-                        material["doubleSided"] = True
-                        material["alphaMode"] = "OPAQUE"
-
-                        pbr = material.setdefault("pbrMetallicRoughness", {})
-                        base_color = pbr.setdefault(
-                            "baseColorFactor",
-                            [1.0, 1.0, 1.0, 1.0],
-                        )
-                        if len(base_color) >= 4:
-                            base_color[3] = 1.0
-
-                return tree
-
+            self.log.emit("Saving double-sided opaque GLB file...")
             glb_bytes = trimesh.exchange.gltf.export_glb(
                 scene,
                 include_normals=True,
-                tree_postprocessor=make_double_sided,
+                tree_postprocessor=self._make_double_sided_opaque,
             )
 
             output_path.write_bytes(glb_bytes)

@@ -13,8 +13,9 @@ class FillHolesSettings:
 
     run_poisson_on_mesh: bool = False
 
-    close_holes_on_mesh_input: bool = False
-    mesh_hole_max_size: int = 500
+    close_holes_on_mesh_input: bool = True
+    mesh_hole_max_size: int = 300
+    close_hole_under_percent: float = 0.10
 
     point_cloud_depth: int = 10
     point_cloud_fulldepth: int = 5

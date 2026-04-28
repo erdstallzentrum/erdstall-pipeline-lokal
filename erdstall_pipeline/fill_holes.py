@@ -290,7 +290,7 @@ def smooth_current_mesh(
             boundary=True,
         )
 
-        log("Laplacian smoothing fallback done.")
+        log("Laplian smoothing fallback done.")
 
     log("Recomputing normals after smoothing...")
     ms.compute_normal_per_face()
@@ -321,6 +321,215 @@ def close_holes_aggressively(
         log("Hole closing done.")
     except Exception as e:
         log(f"Hole closing skipped: {e}")
+
+
+def close_mesh_holes_below_top_percent(
+    ms: pymeshlab.MeshSet,
+    top_ignore_percent: float,
+    log_callback: Callable[[str], None] | None = None,
+) -> int:
+    def log(message: str) -> None:
+        if log_callback is not None:
+            log_callback(message)
+        else:
+            print(message)
+
+    mesh = ms.current_mesh()
+
+    vertices = mesh.vertex_matrix()
+    faces = mesh.face_matrix()
+
+    if vertices.size == 0 or faces.size == 0:
+        log("Selective hole closing skipped: mesh has no vertices or faces.")
+        return _mesh_count(ms) - 1
+
+    top_ignore_percent = max(0.0, min(1.0, float(top_ignore_percent)))
+
+    min_z = float(vertices[:, 2].min())
+    max_z = float(vertices[:, 2].max())
+    height = max_z - min_z
+
+    if height <= 0:
+        log("Selective hole closing skipped: invalid model height.")
+        return _mesh_count(ms) - 1
+
+    z_cutoff = max_z - height * top_ignore_percent
+
+    log(
+        f"Selective mesh hole closing. "
+        f"Ignoring top {top_ignore_percent * 100:.1f}% of model. "
+        f"min_z={min_z:.6f}, max_z={max_z:.6f}, cutoff_z={z_cutoff:.6f}"
+    )
+
+    edge_count: dict[tuple[int, int], int] = {}
+
+    for face in faces:
+        a = int(face[0])
+        b = int(face[1])
+        c = int(face[2])
+
+        for u, v in ((a, b), (b, c), (c, a)):
+            edge = (min(u, v), max(u, v))
+            edge_count[edge] = edge_count.get(edge, 0) + 1
+
+    boundary_edges = [edge for edge, count in edge_count.items() if count == 1]
+
+    if not boundary_edges:
+        log("No boundary edges found. No holes to close.")
+        return _mesh_count(ms) - 1
+
+    adjacency: dict[int, list[int]] = {}
+
+    for u, v in boundary_edges:
+        adjacency.setdefault(u, []).append(v)
+        adjacency.setdefault(v, []).append(u)
+
+    visited_edges: set[tuple[int, int]] = set()
+    loops: list[list[int]] = []
+
+    for start_u, start_v in boundary_edges:
+        start_edge = (min(start_u, start_v), max(start_u, start_v))
+
+        if start_edge in visited_edges:
+            continue
+
+        loop = [start_u]
+        prev = start_u
+        current = start_v
+
+        visited_edges.add(start_edge)
+
+        for _ in range(len(boundary_edges) + 10):
+            loop.append(current)
+
+            if current == start_u:
+                break
+
+            next_vertex = None
+
+            for candidate in adjacency.get(current, []):
+                if candidate == prev:
+                    continue
+
+                candidate_edge = (min(current, candidate), max(current, candidate))
+
+                if candidate_edge not in visited_edges:
+                    next_vertex = candidate
+                    break
+
+            if next_vertex is None:
+                break
+
+            visited_edges.add((min(current, next_vertex), max(current, next_vertex)))
+            prev, current = current, next_vertex
+
+        if len(loop) >= 4 and loop[0] == loop[-1]:
+            loops.append(loop[:-1])
+
+    if not loops:
+        log("No valid closed boundary loops found.")
+        return _mesh_count(ms) - 1
+
+    center_vertices: list[np.ndarray] = []
+    new_faces: list[list[int]] = []
+    center_colors: list[np.ndarray] = []
+
+    use_colors = False
+    vertex_colors = None
+
+    try:
+        vertex_colors = mesh.vertex_color_matrix()
+        if vertex_colors is not None and len(vertex_colors) == len(vertices):
+            use_colors = True
+    except Exception:
+        use_colors = False
+        vertex_colors = None
+
+    closed_count = 0
+    skipped_top_count = 0
+    skipped_invalid_count = 0
+    created_faces = 0
+
+    for loop in loops:
+        if len(loop) < 3:
+            skipped_invalid_count += 1
+            continue
+
+        loop_array = np.asarray(loop, dtype=np.int64)
+        loop_vertices = vertices[loop_array]
+
+        hole_max_z = float(loop_vertices[:, 2].max())
+
+        if hole_max_z > z_cutoff:
+            skipped_top_count += 1
+            continue
+
+        center = loop_vertices.mean(axis=0)
+        center_index = len(vertices) + len(center_vertices)
+        center_vertices.append(center)
+
+        if use_colors and vertex_colors is not None:
+            center_colors.append(vertex_colors[loop_array].mean(axis=0))
+
+        for index in range(len(loop)):
+            a = int(loop[index])
+            b = int(loop[(index + 1) % len(loop)])
+            new_faces.append([center_index, a, b])
+            created_faces += 1
+
+        closed_count += 1
+
+    if closed_count == 0:
+        log(
+            f"No holes closed. Found {len(loops):,} boundary loop(s). "
+            f"Skipped top-zone holes: {skipped_top_count:,}. "
+            f"Skipped invalid holes: {skipped_invalid_count:,}."
+        )
+        return _mesh_count(ms) - 1
+
+    center_vertices_array = np.asarray(center_vertices, dtype=vertices.dtype)
+    new_faces_array = np.asarray(new_faces, dtype=faces.dtype)
+
+    final_vertices = np.vstack((vertices, center_vertices_array))
+    final_faces = np.vstack((faces, new_faces_array))
+
+    if use_colors and vertex_colors is not None:
+        center_colors_array = np.asarray(center_colors, dtype=vertex_colors.dtype)
+        final_colors = np.vstack((vertex_colors, center_colors_array))
+
+        closed_mesh = pymeshlab.Mesh(
+            vertex_matrix=final_vertices,
+            face_matrix=final_faces,
+            v_color_matrix=final_colors,
+        )
+    else:
+        closed_mesh = pymeshlab.Mesh(
+            vertex_matrix=final_vertices,
+            face_matrix=final_faces,
+        )
+
+    ms.add_mesh(closed_mesh, "mesh_holes_closed_below_top_percent")
+
+    closed_index = _mesh_count(ms) - 1
+    ms.set_current_mesh(closed_index)
+
+    ms.meshing_remove_duplicate_faces()
+    ms.meshing_remove_duplicate_vertices()
+    ms.meshing_remove_unreferenced_vertices()
+
+    try:
+        ms.compute_normal_per_face()
+        ms.compute_normal_per_vertex()
+    except Exception as e:
+        log(f"Normal recompute after selective hole closing skipped: {e}")
+
+    log(
+        f"Closed {closed_count:,} hole(s) below cutoff. "
+        f"Skipped {skipped_top_count:,} hole(s) in top zone. "
+        f"Created {created_faces:,} face(s)."
+    )
+
+    return closed_index
 
 
 def fill_holes(
@@ -506,11 +715,12 @@ def fill_holes(
             ms.set_current_mesh(final_mesh_index)
 
         if settings.close_holes_on_mesh_input:
-            close_holes_aggressively(
+            final_mesh_index = close_mesh_holes_below_top_percent(
                 ms,
-                max_hole_size=max(settings.mesh_hole_max_size, 1_000_000),
+                top_ignore_percent=settings.close_hole_under_percent,
                 log_callback=log,
             )
+            ms.set_current_mesh(final_mesh_index)
         else:
             log("Skipping hole closing on mesh input.")
 

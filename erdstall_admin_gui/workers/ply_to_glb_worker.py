@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import math
 
 import numpy as np
 import trimesh
 from PySide6.QtCore import QObject, Signal, Slot
+
+from erdstall_pipeline.config import FINAL_MESH, PLY_DIR
+from erdstall_pipeline.settings.glb_export_settings import GlbExportSettings
 
 
 class PlyToGlbWorker(QObject):
@@ -16,20 +20,18 @@ class PlyToGlbWorker(QObject):
     def __init__(
         self,
         mesh_id: str,
-        add_human_scale: bool = True,
-        human_model_path: str | Path = "public/person.glb",
-        human_height: float = 1.70,
-        human_floor_offset: float = 0.02,
-        human_up_axis: str = "y",
+        settings: GlbExportSettings | None = None,
     ) -> None:
         super().__init__()
 
         self.mesh_id = mesh_id
-        self.add_human_scale = add_human_scale
-        self.human_model_path = Path(human_model_path)
-        self.human_height = human_height
-        self.human_floor_offset = human_floor_offset
-        self.human_up_axis = human_up_axis
+        self.settings = settings or GlbExportSettings()
+
+        self.add_human_scale = bool(self.settings.add_human_scale)
+        self.human_model_path = Path(self.settings.human_model_path)
+        self.human_height = float(self.settings.human_height)
+        self.human_floor_offset = float(self.settings.human_floor_offset)
+        self.human_up_axis = str(self.settings.human_up_axis)
 
     def _force_vertex_colors_opaque(self, mesh: trimesh.Trimesh) -> None:
         if not hasattr(mesh.visual, "vertex_colors"):
@@ -41,6 +43,9 @@ class PlyToGlbWorker(QObject):
             return
 
         vertex_colors = vertex_colors.copy()
+
+        if vertex_colors.ndim != 2:
+            return
 
         if vertex_colors.shape[1] == 3:
             alpha = np.full(
@@ -72,12 +77,21 @@ class PlyToGlbWorker(QObject):
         self,
         geometries: list[trimesh.Trimesh],
     ) -> tuple[np.ndarray, np.ndarray]:
+        if not geometries:
+            raise ValueError("No geometries available for bounds calculation.")
+
         mins = []
         maxs = []
 
         for geometry in geometries:
+            if geometry.bounds is None:
+                continue
+
             mins.append(geometry.bounds[0])
             maxs.append(geometry.bounds[1])
+
+        if not mins or not maxs:
+            raise ValueError("Could not calculate geometry bounds.")
 
         return np.min(np.vstack(mins), axis=0), np.max(np.vstack(maxs), axis=0)
 
@@ -97,7 +111,7 @@ class PlyToGlbWorker(QObject):
             raise ValueError("Human model is not a valid mesh or scene.")
 
         geometries = [
-            geometry
+            geometry.copy()
             for geometry in geometries
             if isinstance(geometry, trimesh.Trimesh) and len(geometry.faces) > 0
         ]
@@ -109,7 +123,7 @@ class PlyToGlbWorker(QObject):
 
         if up_axis == "y":
             y_to_z = trimesh.transformations.rotation_matrix(
-                np.radians(90),
+                math.radians(90.0),
                 [1, 0, 0],
             )
             for geometry in geometries:
@@ -117,7 +131,7 @@ class PlyToGlbWorker(QObject):
 
         elif up_axis == "x":
             x_to_z = trimesh.transformations.rotation_matrix(
-                np.radians(-90),
+                math.radians(-90.0),
                 [0, 1, 0],
             )
             for geometry in geometries:
@@ -139,15 +153,16 @@ class PlyToGlbWorker(QObject):
 
         for geometry in geometries:
             geometry.apply_scale(scale)
+            self._force_vertex_colors_opaque(geometry)
 
         return geometries
 
     def _place_human_next_to_mesh(
-            self,
-            human_geometries: list[trimesh.Trimesh],
-            mesh: trimesh.Trimesh,
-            human_height: float,
-            floor_offset: float,
+        self,
+        human_geometries: list[trimesh.Trimesh],
+        mesh: trimesh.Trimesh,
+        human_height: float,
+        floor_offset: float,
     ) -> None:
         mesh_min, mesh_max = mesh.bounds
         mesh_size = mesh_max - mesh_min
@@ -156,10 +171,7 @@ class PlyToGlbWorker(QObject):
         human_center = (human_min + human_max) * 0.5
 
         target_x = mesh_min[0] + mesh_size[0] * 0.05
-
-        # smaller value = closer to model
         target_y = mesh_min[1] - human_height * 0.05
-
         target_z = mesh_min[2] + floor_offset
 
         translation = np.array(
@@ -178,6 +190,51 @@ class PlyToGlbWorker(QObject):
             "Human model placed at "
             f"x={target_x:.3f}, y={target_y:.3f}, z={target_z:.3f}"
         )
+
+    def _apply_export_rotation(
+        self,
+        geometries: list[tuple[str, trimesh.Trimesh]],
+    ) -> None:
+        rotation_x_degrees = float(
+            getattr(self.settings, "rotation_x_degrees", -90.0)
+        )
+        rotation_y_degrees = float(
+            getattr(self.settings, "rotation_y_degrees", 0.0)
+        )
+        rotation_z_degrees = float(
+            getattr(self.settings, "rotation_z_degrees", 0.0)
+        )
+
+        if (
+            rotation_x_degrees == 0.0
+            and rotation_y_degrees == 0.0
+            and rotation_z_degrees == 0.0
+        ):
+            self.log.emit("Export rotation skipped.")
+            return
+
+        self.log.emit(
+            "Applying export rotation: "
+            f"x={rotation_x_degrees:.2f}, "
+            f"y={rotation_y_degrees:.2f}, "
+            f"z={rotation_z_degrees:.2f}"
+        )
+
+        rx = math.radians(rotation_x_degrees)
+        ry = math.radians(rotation_y_degrees)
+        rz = math.radians(rotation_z_degrees)
+
+        rotation = trimesh.transformations.euler_matrix(
+            rx,
+            ry,
+            rz,
+            axes="sxyz",
+        )
+
+        for _, geometry in geometries:
+            geometry.apply_transform(rotation)
+
+        self.log.emit("Export rotation done.")
 
     def _make_double_sided_opaque(self, tree: dict) -> dict:
         materials = tree.setdefault("materials", [])
@@ -205,13 +262,15 @@ class PlyToGlbWorker(QObject):
                 del material["alphaCutoff"]
 
             pbr = material.setdefault("pbrMetallicRoughness", {})
-            base_color = pbr.setdefault("baseColorFactor", [1.0, 1.0, 1.0, 1.0])
+            base_color = pbr.setdefault(
+                "baseColorFactor",
+                [1.0, 1.0, 1.0, 1.0],
+            )
 
             while len(base_color) < 4:
                 base_color.append(1.0)
 
             base_color[3] = 1.0
-
 
         for mesh_data in tree.get("meshes", []):
             for primitive in mesh_data.get("primitives", []):
@@ -223,10 +282,10 @@ class PlyToGlbWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
-            self.log.emit("Starting PLY TO GLB conversion...")
+            self.log.emit("Starting PLY to GLB conversion...")
 
-            input_path = Path("data/ply") / self.mesh_id / "mesh.ply"
-            output_path = Path("data/ply") / self.mesh_id / "mesh.glb"
+            input_path = PLY_DIR / self.mesh_id / FINAL_MESH
+            output_path = PLY_DIR / self.mesh_id / "mesh.glb"
 
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -270,7 +329,9 @@ class PlyToGlbWorker(QObject):
 
             if self.add_human_scale:
                 if self.human_model_path.exists():
-                    self.log.emit(f"Loading human scale model: {self.human_model_path}")
+                    self.log.emit(
+                        f"Loading human scale model: {self.human_model_path}"
+                    )
 
                     human_geometries = self._load_human_model(
                         human_path=self.human_model_path,
@@ -291,19 +352,13 @@ class PlyToGlbWorker(QObject):
                     self.log.emit("Human scale model added.")
                 else:
                     self.log.emit(
-                        f"Human scale model not found, skipping: {self.human_model_path}"
+                        f"Human scale model not found, skipping: "
+                        f"{self.human_model_path}"
                     )
+            else:
+                self.log.emit("Human scale model disabled.")
 
-            self.log.emit("Rotating mesh and optional human model...")
-            rotation = trimesh.transformations.rotation_matrix(
-                np.radians(-90),
-                [1, 0, 0],
-            )
-
-            for _, geometry in geometries:
-                geometry.apply_transform(rotation)
-
-            self.log.emit("Rotation done.")
+            self._apply_export_rotation(geometries)
 
             self.log.emit("Building GLB scene...")
             scene = trimesh.Scene()

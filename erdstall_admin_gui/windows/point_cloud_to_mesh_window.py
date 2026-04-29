@@ -37,7 +37,7 @@ class PointCloudToMeshWindow(QDialog):
         preprocess_form = QFormLayout(preprocess_group)
 
         self.downsample_size = self._doublespinbox(0.0, 10000.0, 0.005, 4)
-        self.max_points_for_poisson = self._spinbox(0, 20_000_000)
+        self.max_points_for_poisson = self._spinbox(0, 30_000_000)
         self.spacing_sample_size = self._spinbox(1_000, 5_000_000)
 
         preprocess_form.addRow("Downsample voxel size:", self.downsample_size)

@@ -36,6 +36,7 @@ from erdstall_admin_gui.widgets.project_list_item_widget import ProjectListItemW
 import shutil
 from erdstall_admin_gui.workers.ply_to_glb_worker import PlyToGlbWorker
 from erdstall_admin_gui.windows.point_cloud_to_mesh_window import PointCloudToMeshWindow
+from erdstall_admin_gui.windows.glb_export_window import GlbExportWindow
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
@@ -56,10 +57,9 @@ class MainWindow(QMainWindow):
 
         self._full_pipeline_thread: QThread | None = None
         self._full_pipeline_worker: PathFullPipelineWorker | None = None
-        
+
         self._glb_thread: QThread | None = None
         self._glb_worker: PlyToGlbWorker | None = None
-
 
         self._point_cloud_thread: QThread | None = None
         self._point_cloud_worker: PointCloudToMeshWorker | None = None
@@ -483,12 +483,13 @@ class MainWindow(QMainWindow):
         self._full_pipeline_worker = None
         self._task_log_window = None
 
-    def start_ply_to_glb(self)-> None:
+    def start_ply_to_glb(self) -> None:
         if not self.current_mesh_id:
             QMessageBox.warning(self, "No project selected", "Please select a project first.")
             return
+
         if self._glb_thread is not None:
-            QMessageBox.information(self, "Busy", "Full glb pipeline is already running.")
+            QMessageBox.information(self, "Busy", "GLB export is already running.")
             return
 
         mesh_path = Path("data/ply") / self.current_mesh_id / "mesh.ply"
@@ -497,16 +498,22 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Missing mesh.ply",
-                "mesh.ply does not exist yet.\n\nYou need to run Fill Holes before converting to GLB."
+                "mesh.ply does not exist yet.\n\nYou need to run Fill Holes before converting to GLB.",
             )
             return
+
+        dialog = GlbExportWindow(self)
+        if not dialog.exec():
+            return
+
+        settings = dialog.get_settings()
 
         reply = QMessageBox.question(
             self,
             "Convert PLY to GLB",
-            f"Are you sure you want to convert this PLY: '{self.current_mesh_id}'?'",
+            f"Are you sure you want to convert this PLY: '{self.current_mesh_id}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply != QMessageBox.StandardButton.Yes:
@@ -514,13 +521,17 @@ class MainWindow(QMainWindow):
 
         self._task_log_window = TaskLogWindow(
             f"Export GLB - {self.current_mesh_id}",
-            self
+            self,
         )
 
         self._task_log_window.set_running("Exporting PLY to GLB...")
 
         self._glb_thread = QThread()
-        self._glb_worker = PlyToGlbWorker(self.current_mesh_id)
+        self._glb_worker = PlyToGlbWorker(
+            self.current_mesh_id,
+            settings=settings,
+        )
+
         self._glb_worker.moveToThread(self._glb_thread)
 
         self._glb_thread.started.connect(self._glb_worker.run)

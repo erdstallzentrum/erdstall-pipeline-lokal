@@ -1,6 +1,6 @@
-import os
 import logging
 import shutil
+from pathlib import Path
 
 from .config import PLY_DIR, TEXTURE_DIR, BACKUP_TEXTURE_DIR
 
@@ -8,49 +8,49 @@ logger = logging.getLogger(__name__)
 
 
 def _save_original_version(mesh_id):
-    erdstall_path = os.path.join(PLY_DIR, mesh_id)
-    if not os.path.exists(erdstall_path):
+    erdstall_path = Path(PLY_DIR) / mesh_id
+    if not erdstall_path.exists():
         raise FileNotFoundError(f"Erdstall directory not found: {mesh_id}")
 
-    backup_path = os.path.join(erdstall_path, BACKUP_TEXTURE_DIR)
-    current_path = os.path.join(erdstall_path, TEXTURE_DIR)
+    backup_path = erdstall_path /  BACKUP_TEXTURE_DIR
+    current_path = erdstall_path / TEXTURE_DIR
 
-    if not os.path.exists(current_path):
+    if not current_path.exists():
         raise FileNotFoundError(f"Texture directory not found: {current_path}")
 
-    if not os.path.exists(backup_path):
+    if not backup_path.exists():
         try:
-            os.makedirs(backup_path)
-            for filename in os.listdir(current_path):
-                src_path = os.path.join(current_path, filename)
-                dst_path = os.path.join(backup_path, filename)
+            backup_path.mkdir(parents=True, exist_ok=True)
+
+            for filename in current_path.iterdir():
+                src_path =  filename
+                dst_path = backup_path /  filename.name
                 shutil.copy2(src_path, dst_path)
         except Exception as e:
             logger.error(f"Failed to create backup textures directory: {str(e)}", exc_info=True)
             raise
 
 
-def get_current_version_path(mesh_id):
+def get_current_version_path(mesh_id) -> Path:
     _save_original_version(mesh_id)
-    return os.path.join(PLY_DIR, mesh_id, TEXTURE_DIR)
+    return Path(PLY_DIR) / mesh_id / TEXTURE_DIR
 
 
 def delete_new_version(mesh_id):
     _save_original_version(mesh_id)
     current_path = get_current_version_path(mesh_id)
-    backup_path = os.path.join(os.path.dirname(current_path), BACKUP_TEXTURE_DIR)
+    backup_path = current_path.parent / BACKUP_TEXTURE_DIR
 
     try:
-        for element in os.listdir(current_path):
-            path = os.path.join(current_path, element)
-            if os.path.isfile(path):
-                os.remove(path)
-            elif os.path.isdir(path):
-                shutil.rmtree(path)
+        for element in current_path.iterdir():
+            if element.is_file():
+                element.unlink()
+            elif element.is_dir():
+                shutil.rmtree(element)
 
-        for filename in os.listdir(backup_path):
-            src_path = os.path.join(backup_path, filename)
-            dst_path = os.path.join(current_path, filename)
+        for filename in backup_path.iterdir():
+            src_path = filename
+            dst_path = current_path / filename.name
             shutil.copy2(src_path, dst_path)
 
     except Exception as e:

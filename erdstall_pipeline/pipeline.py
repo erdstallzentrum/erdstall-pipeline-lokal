@@ -20,7 +20,7 @@ class PipelineError(Exception):
 
 def mesh_base_dir(mesh_id: str) -> Path:
     validate_mesh_id(mesh_id)
-    return PLY_DIR / mesh_id
+    return Path(PLY_DIR) / mesh_id
 
 
 def create_project_structure(mesh_id: str) -> Path:

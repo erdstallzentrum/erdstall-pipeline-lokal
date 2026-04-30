@@ -1,21 +1,29 @@
-import os.path
+import os
+from pathlib import Path
 import pymeshlab
 
 from .config import PATCHES_DIR
 
-def clear_patches(filled_holes_input_file, output_file, unused_patches):
+def clear_patches(
+        filled_holes_input_file: str | Path,
+        output_file: str | Path,
+        unused_patches: list[str]
+) -> None:
     first_iteration = True
+    filled_holes_input_file = Path(filled_holes_input_file)
+    output_file = Path(output_file)
+    patches_dir = filled_holes_input_file.parent / PATCHES_DIR
 
     for patch in unused_patches:
         ms = pymeshlab.MeshSet()
 
         if first_iteration:
             first_iteration = False
-            ms.load_new_mesh(filled_holes_input_file)
+            ms.load_new_mesh(str(filled_holes_input_file))
         else:
-            ms.load_new_mesh(output_file)
+            ms.load_new_mesh(str(output_file))
 
-        ms.load_new_mesh(os.path.join(os.path.dirname(filled_holes_input_file), PATCHES_DIR, patch))
+        ms.load_new_mesh(str(patches_dir / patch))
         ms.set_current_mesh(0)
         ms.set_selection_none()
 
@@ -35,7 +43,7 @@ def clear_patches(filled_holes_input_file, output_file, unused_patches):
 
         ms.set_current_mesh(0)
         ms.save_current_mesh(
-            output_file,
+            str(output_file),
             save_vertex_color=True,
             save_wedge_texcoord=False,
             save_textures=False

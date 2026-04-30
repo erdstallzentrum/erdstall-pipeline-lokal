@@ -9,6 +9,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from config import BASE_DIR
+
+
 class SplashScreen(QWidget):
     def __init__(self)-> None:
         super().__init__()
@@ -29,7 +32,7 @@ class SplashScreen(QWidget):
         self.logo_label = QLabel()
         self.logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        pixmap = QPixmap("public/Logo.png")
+        pixmap = QPixmap(str(BASE_DIR / "public" / "Logo.png"))
 
         if not pixmap.isNull():
             self.logo_label.setPixmap(

@@ -112,10 +112,11 @@ def copy_inputs_to_workdir(mesh_path: Path, path_points_path: Path, work_dir: Pa
 
 
 
-def ensure_exists(path: Path, message: str) -> None:
+def ensure_exists(path: str | Path, message: str) -> None:
     """
     Raise an error if a required file does not exist.
     """
+    path = Path(path)
     if not path.exists():
         raise RuntimeError(message)
 

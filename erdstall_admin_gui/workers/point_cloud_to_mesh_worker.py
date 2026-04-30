@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import open3d as o3d
 from PySide6.QtCore import QObject, Signal, Slot
 
@@ -27,7 +29,7 @@ class PointCloudToMeshWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
-            project_dir = PLY_DIR / self.mesh_id
+            project_dir = Path(PLY_DIR) / self.mesh_id
             input_path = project_dir / ORIGINAL_MESH
             output_path = project_dir / REPAIRED_MESH
 

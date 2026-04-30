@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -14,19 +17,71 @@ from .config import (
     SIZE,
 )
 
-FIJI_EXE = Path(r"C:\Praktikum_docs\Fiji\fiji-windows-x64.exe")
+def _get_fiji_executable() -> Path:
+    env_path = os.environ.get("FIJI_EXE") or os.environ.get("FIJI_PATH")
 
+    if env_path:
+        fiji_path = Path(env_path).expanduser()
+        if fiji_path.exists():
+            return fiji_path
+
+    candidates: list[Path] = []
+
+    if sys.platform.startswith("win"):
+        candidates.extend(
+            [
+                Path(r"C:\Fiji.app\ImageJ-win64.exe"),
+                Path(r"C:\Program Files\Fiji.app\ImageJ-win64.exe"),
+                Path(r"C:\Program Files\Fiji.app\fiji-windows-x64.exe"),
+            ]
+        )
+    elif sys.platform == "darwin":
+        candidates.extend(
+            [
+                Path("/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx"),
+                Path.home() / "Applications/Fiji.app/Contents/MacOS/ImageJ-macosx",
+            ]
+        )
+
+    else:
+        candidates.extend(
+            [
+                Path("/opt/Fiji.app/Imagej-linux64"),
+                Path("/usr/local/Fiji.app/Imagej-linux64"),
+                Path.home() / "Fiji.app/Imagej-linux64",
+            ]
+        )
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    for executable_name in (
+        "ImageJ-win64.exe",
+        "fiji-windows-x64.exe",
+        "ImageJ-macosx",
+        "ImageJ-linux64",
+        "fiji",
+        "imagej"
+    ):
+        found = shutil.which(executable_name)
+        if found:
+            return Path(found)
+
+    raise RuntimeError(
+        "Fiji executable not found.\n\n"
+        "Set the FIJI_EXE environment variable to your Fiji executable path.\n\n"
+    )
 
 def _count_nonzero_raw(path: Path) -> int:
     if not path.exists():
         return -1
-    data = np.fromfile(path, dtype=np.uint8)
+    data = np.fromfile(str(path), dtype=np.uint8)
     return int(np.count_nonzero(data))
 
 
 def _run_fiji_macro_blocking(macro_text: str) -> tuple[str, str]:
-    if not FIJI_EXE.exists():
-        raise RuntimeError(f"Fiji executable not found: {FIJI_EXE}")
+    fiji_exe = _get_fiji_executable()
 
     with tempfile.NamedTemporaryFile("w", suffix=".ijm", delete=False, encoding="utf-8") as tmp:
         tmp.write(macro_text)
@@ -34,13 +89,13 @@ def _run_fiji_macro_blocking(macro_text: str) -> tuple[str, str]:
 
     try:
         cmd = [
-            str(FIJI_EXE),
+            str(fiji_exe),
             "--headless",
             "-macro",
             str(macro_path),
         ]
 
-        print(f"[ImageJ] Running Fiji via: {FIJI_EXE}")
+        print(f"[ImageJ] Running Fiji via: {fiji_exe}")
         print(f"[ImageJ] Macro file: {macro_path}")
 
         result = subprocess.run(
@@ -127,7 +182,6 @@ async def run_imagej():
 
     await asyncio.to_thread(_run_fiji_macro_blocking, macro)
 
-    # Validate intermediate mask
     if not debug_mask.exists():
         raise RuntimeError(f"ImageJ did not create debug mask file: {debug_mask}")
 
@@ -149,7 +203,6 @@ async def run_imagej():
             "Thresholding / mask conversion failed."
         )
 
-    # Validate skeleton output
     if not output_skel.exists():
         raise RuntimeError(f"ImageJ did not create skeleton file: {output_skel}")
 

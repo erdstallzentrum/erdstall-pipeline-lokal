@@ -1,29 +1,15 @@
 import csv
+from pathlib import Path
+import json
 
-
-def _csv_to_json(filepath):
-    """
-    Parses a CSV file containing 3D path points into a JSON-compatible dictionary.
-
-    The CSV is expected to be semicolon-delimited with columns for ID, coordinates
-    (x, y, z), and neighbor connections (prev/next). It handles decimal conversion
-    (comma to dot) for coordinates.
-
-    Args:
-        filepath (str): The absolute path to the CSV file.
-
-    Returns:
-        dict: A dictionary with keys:
-            - "startNode": The ID of the starting node (usually point_id '0').
-            - "nodes": A list of dictionaries, each representing a point in 3D space
-                       with 'id', 'position' [x, y, z], and 'neighbors' list.
-    """
+def _csv_to_json(filepath: str | Path):
+    filepath = Path(filepath)
     result = {
         "startNode": None,
         "nodes": []
     }
 
-    with open(filepath, mode='r', encoding='utf-8') as f:
+    with filepath.open(mode="r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f, delimiter=';')
 
         for row in reader:
@@ -61,9 +47,6 @@ def _csv_to_json(filepath):
 
     return result
 
-import json
-from pathlib import Path
-
 
 def csv_to_json_file(csv_path: str | Path, json_path: str | Path) -> Path:
     csv_path = Path(csv_path)
@@ -71,7 +54,7 @@ def csv_to_json_file(csv_path: str | Path, json_path: str | Path) -> Path:
 
     data = _csv_to_json(csv_path)
 
-    with open(json_path, "w", encoding="utf-8") as f:
+    with json_path.open("w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-    return json_path
+    return Path(json_path)

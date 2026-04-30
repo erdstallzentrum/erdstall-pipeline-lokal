@@ -16,8 +16,8 @@ class AppSettings:
         value = cls.settings().value("paths/fiji_exe", "")
         if not value:
             return None
-        return Path(value)
+        return Path(str(value)).expanduser()
     
     @classmethod
-    def set_fiji_exe(cls, path: str)-> None:
-        cls.settings().setValue("paths/fiji_exe", path)
+    def set_fiji_exe(cls, path: str | Path )-> None:
+        cls.settings().setValue("paths/fiji_exe", str(path))

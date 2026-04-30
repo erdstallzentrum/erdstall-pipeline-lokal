@@ -1,5 +1,4 @@
-import os
-from PIL import Image, ImageEnhance
+from pathlib import Path
 from typing import Iterable
 from PIL import Image, ImageEnhance
 import cv2
@@ -10,8 +9,8 @@ from .settings.texture_settings import TextureJob, TextureSettings
 
 
 def _adjust_texture(
-    image_path,
-    output_image_path,
+    image_path: str | Path,
+    output_image_path: str | Path,
     settings: TextureSettings,
 ):
     img = Image.open(image_path).convert("RGB")
@@ -71,23 +70,26 @@ def _adjust_sharpness_with_opencv(
 
 
 def process_model_textures(
-    input_folder,
-    output_folder,
+    input_folder: str | Path,
+    output_folder: str | Path,
     settings: TextureSettings,
     supported_formats: Iterable[str] = (".jpg",".jpeg", ".png"),
 ) -> None:
     
-    os.makedirs(output_folder, exist_ok=True)
-    for filename in os.listdir(input_folder):
-        if filename.lower().endswith(supported_formats):
-            input_path = os.path.join(input_folder, filename)
-            output_path = os.path.join(output_folder, filename)
-            if os.path.isfile(input_path):
-                _adjust_texture(
-                    input_path,
-                    output_path,
-                    settings,
-                )
+    input_folder = Path(input_folder)
+    output_folder = Path(output_folder)
+    supported_formats = tuple(supported_formats)
+
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    for input_path in input_folder.iterdir():
+        if input_path.is_file() and input_path.name.lower().endswith(supported_formats):
+            output_path = output_folder / input_path.name
+            _adjust_texture(
+                input_path,
+                output_path,
+                settings,
+            )
 
                 
 def process_model_textures_job(job: TextureJob) -> None:

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -190,7 +191,7 @@ class HomePage(QWidget):
             self.convert_point_cloud_button.setVisible(False)
             return
 
-        self.current_project_dir = PLY_DIR / mesh_id
+        self.current_project_dir = Path(PLY_DIR) / mesh_id
         self.refresh_project_info()
 
     def refresh_project_info(self) -> None:
@@ -250,5 +251,6 @@ class HomePage(QWidget):
         if not self.current_project_dir or not self.current_project_dir.exists():
             return
 
-        import os
-        os.startfile(self.current_project_dir)
+        QDesktopServices.openUrl(
+            QUrl.fromLocalFile(str(self.current_project_dir))
+        )

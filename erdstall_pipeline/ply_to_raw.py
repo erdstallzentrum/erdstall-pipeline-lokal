@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import numpy as np
 import vtk
@@ -244,7 +245,9 @@ def mesh_to_image(import_mesh, image_size: int = SIZE, write_raw: bool = True):
     return filled_array
 
 
-def convert_ply_to_raw(mesh_path: str):
+def convert_ply_to_raw(mesh_path: str | Path):
+
+    mesh_path = Path(mesh_path)
     print(f"[PLY2RAW] convert_ply_to_raw: start -> {mesh_path}")
     t0 = time.time()
 

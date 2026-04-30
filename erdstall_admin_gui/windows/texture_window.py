@@ -145,13 +145,15 @@ class TextureWindow(QWidget):
     def clear_log(self) -> None:
         self.log_output.clear()
     
-    def validate_inputs(self) -> tuple[str, str] | None:
-        input_folder = self.input_folder_edit.text().strip()
-        output_folder = self.output_folder_edit.text().strip()
+    def validate_inputs(self) -> tuple[Path, Path] | None:
+        input_folder_text = self.input_folder_edit.text().strip()
+        output_folder_text = self.output_folder_edit.text().strip()
 
-        if not input_folder:
+        if not input_folder_text:
             QMessageBox.warning(self, "Missing input", "Please select an input texture folder.")
             return None
+
+        input_folder = Path(input_folder_text)
         
         if not Path(input_folder).exists():
             QMessageBox.warning(self, "Invalid input", "Input folder does not exist.")
@@ -159,13 +161,15 @@ class TextureWindow(QWidget):
         
         if self.same_folder_checkbox.isChecked():
             output_folder = input_folder
-            self.output_folder_edit.setText(output_folder)
+            self.output_folder_edit.setText(str(output_folder))
+        else:
+            if not output_folder_text:
+                QMessageBox.warning(self, "Missing output", "Please select an output folder.")
+                return None
 
-        if not output_folder:
-            QMessageBox.warning(self, "Missing output", "Please select an output folder.")
-            return None
-        
-        Path(output_folder).mkdir(parents=True, exist_ok=True)
+            output_folder = Path(output_folder_text)
+
+        output_folder.mkdir(parents=True, exist_ok=True)
 
         return input_folder, output_folder
     

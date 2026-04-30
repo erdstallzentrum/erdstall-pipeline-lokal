@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from erdstall_admin_gui.workers.point_cloud_to_mesh_worker import PointCloudToMeshWorker
-from erdstall_pipeline.config import PLY_DIR
+from erdstall_pipeline.config import PLY_DIR, FINAL_MESH
 from erdstall_admin_gui.widgets.project_list_item_widget import ProjectListItemWidget
 import shutil
 from erdstall_admin_gui.workers.ply_to_glb_worker import PlyToGlbWorker
@@ -153,8 +153,9 @@ class MainWindow(QMainWindow):
     def load_projects(self) -> None:
         self.project_list.clear()
 
-        PLY_DIR.mkdir(parents=True, exist_ok=True)
-        for path in sorted(PLY_DIR.iterdir()):
+        projects_dir = Path(PLY_DIR)
+        projects_dir.mkdir(parents=True, exist_ok=True)
+        for path in sorted(projects_dir.iterdir()):
             if not path.is_dir():
                 continue
             item = QListWidgetItem(self.project_list)
@@ -188,7 +189,7 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        project_path = PLY_DIR / project_name
+        project_path = Path(PLY_DIR) / project_name
 
         if not project_path.exists():
             QMessageBox.warning(self, "Not Found", f"Project folder '{project_name}' was not found.")
@@ -226,7 +227,12 @@ class MainWindow(QMainWindow):
             mesh_file=window.mesh_file,
             texture_dir=window.texture_dir
         )
-    def _start_project_init(self, mesh_id: str, mesh_file: str, texture_dir: str | None) ->None:
+    def _start_project_init(
+            self,
+            mesh_id: str,
+            mesh_file: str | Path,
+            texture_dir: str| Path | None
+    ) ->None:
         if self._init_thread is not None:
             QMessageBox.information(self, "Busy", "A project is already being created")
             return
@@ -492,7 +498,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Busy", "GLB export is already running.")
             return
 
-        mesh_path = Path("data/ply") / self.current_mesh_id / "mesh.ply"
+        mesh_path = Path(PLY_DIR) / self.current_mesh_id / FINAL_MESH
 
         if not mesh_path.exists():
             QMessageBox.warning(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from pathlib import Path
+
 from ..config import IMAGE_DEFAULT_FACTOR
 
 
@@ -13,6 +15,6 @@ class TextureSettings:
 
 @dataclass(slots = True)
 class TextureJob: 
-    input_folder: str
-    output_folder: str
+    input_folder: str | Path
+    output_folder: str | Path
     settings: TextureSettings

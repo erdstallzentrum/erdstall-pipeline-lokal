@@ -90,7 +90,7 @@ class AddPathPointsWindow(QDialog):
             return
 
         self.file_path_edit.setText(file_path)
-        self.pp_file_path = Path(file_path)
+        self.pp_file_path = Path(file_path).expanduser()
 
         try:
             values = self._parse_pp_file(self.pp_file_path)
@@ -128,7 +128,9 @@ class AddPathPointsWindow(QDialog):
 
     @staticmethod
     def _parse_pp_file(file_path: Path) -> list[float]:
-        tree = ET.parse(file_path)
+        file_path = Path(file_path).expanduser()
+
+        tree = ET.parse(str(file_path))
         root = tree.getroot()
 
         points = root.findall("point")

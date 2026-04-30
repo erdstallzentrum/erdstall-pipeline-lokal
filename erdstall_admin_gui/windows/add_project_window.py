@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -63,7 +65,7 @@ class AddProjectWindow(QDialog):
 
     def _connect(self) -> None:
         self.mesh_browse_button.clicked.connect(self._browse_mesh)
-        self.texture_browse_button. clicked.connect(self._browse_texture_dir)
+        self.texture_browse_button.clicked.connect(self._browse_texture_dir)
         self.cancel_button.clicked.connect(self.reject)
         self.create_button.clicked.connect(self._validate_and_accept)
 
@@ -91,10 +93,10 @@ class AddProjectWindow(QDialog):
         )
         if path:
             self.texture_dir_edit.setText(path)
-    
+
     def _validate_and_accept(self) -> None:
         mesh_id = self.mesh_id.strip()
-        mesh_file = self.mesh_file.strip()
+        mesh_file = self.mesh_file
 
         if not mesh_id:
             QMessageBox.warning(self, "Missing project name", "Please enter a project name.")
@@ -104,15 +106,19 @@ class AddProjectWindow(QDialog):
             QMessageBox.warning(self, "Missing mesh file", "Please select a .ply file.")
             return
 
+        if not mesh_file.exists() or not mesh_file.is_file():
+            QMessageBox.warning(self, "Invalid mesh file", "Selected mesh file does not exist.")
+            return
+
         self.accept()
     
     @property
     def mesh_id(self) -> str:
         return self.mesh_id_edit.text().strip()
-    
+
     @property
-    def mesh_file(self) -> str:
-        return self.mesh_file_edit.text().strip()
+    def mesh_file(self) -> Path:
+        return Path(self.mesh_file_edit.text().strip()).expanduser()
     
     @property
     def texture_dir(self) -> str | None:

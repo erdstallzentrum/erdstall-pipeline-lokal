@@ -1,5 +1,9 @@
 
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
 from erdstall_pipeline.settings.app_settings import AppSettings
 from erdstall_admin_gui.workers.setup_worker import SetupWorker
 
@@ -74,13 +78,28 @@ class SetupWindow(QWidget):
             self.fiji_path_edit.setText(str(path))
 
     def _browse(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Fiji executable",
-            "",
-            "Executable (*.exe);;All files(*)",
-        )
-        if path: 
+        if sys.platform == "darwin":
+            path = QFileDialog.getExistingDirectory(
+                self,
+                "Select Fiji.app folder",
+                "/Applications",
+            )
+        elif sys.platform.startswith("win"):
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select Fiji executable",
+                "",
+                "Executable (*.exe);;All files (*)",
+            )
+        else:
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select Fiji executable",
+                "",
+                "Executable (*) ; All files (*)",
+            )
+
+        if path:
             self.fiji_path_edit.setText(path)
 
     def _download_fiji(self)-> None:
@@ -89,12 +108,14 @@ class SetupWindow(QWidget):
         self._log("Opened Fiji download page in browser.")
 
     def _save(self) -> None:
-        path = self.fiji_path_edit.text().strip()
+        path_text = self.fiji_path_edit.text().strip()
 
-        if not path:
+        if not path_text:
             self._log("No path selected")
             return
-        
+
+        path = Path(path_text).expanduser()
+
         AppSettings.set_fiji_exe(path)
         self._log(f"Saved Fiji path: {path}")
         self.status_label.setText("Saved")

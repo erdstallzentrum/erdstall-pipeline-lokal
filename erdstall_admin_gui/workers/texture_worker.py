@@ -1,4 +1,7 @@
 from __future__ import annotations
+
+from pathlib import Path
+
 from PySide6.QtCore import QObject, Signal, Slot
 
 from erdstall_pipeline.change_textures import process_model_textures
@@ -12,13 +15,13 @@ class TextureWorker(QObject):
 
     def __init__(
         self,
-        input_folder: str,
-        output_folder: str,
+        input_folder: str | Path,
+        output_folder: str | Path,
         settings: TextureSettings,
     ) -> None:
         super().__init__()
-        self.input_folder = input_folder
-        self.output_folder = output_folder
+        self.input_folder = Path(input_folder)
+        self.output_folder = Path(output_folder)
         self.settings = settings
 
 

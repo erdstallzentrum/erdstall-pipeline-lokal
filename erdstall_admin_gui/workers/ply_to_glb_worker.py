@@ -7,7 +7,7 @@ import numpy as np
 import trimesh
 from PySide6.QtCore import QObject, Signal, Slot
 
-from erdstall_pipeline.config import FINAL_MESH, PLY_DIR
+from erdstall_pipeline.config import FINAL_MESH, PLY_DIR, BASE_DIR
 from erdstall_pipeline.settings.glb_export_settings import GlbExportSettings
 
 
@@ -28,7 +28,10 @@ class PlyToGlbWorker(QObject):
         self.settings = settings or GlbExportSettings()
 
         self.add_human_scale = bool(self.settings.add_human_scale)
-        self.human_model_path = Path(self.settings.human_model_path)
+        self.human_model_path = Path(self.settings.human_model_path).expanduser()
+
+        if not self.human_model_path.is_absolute():
+            self.human_model_path = Path(BASE_DIR) / self.human_model_path
         self.human_height = float(self.settings.human_height)
         self.human_floor_offset = float(self.settings.human_floor_offset)
         self.human_up_axis = str(self.settings.human_up_axis)
@@ -101,7 +104,7 @@ class PlyToGlbWorker(QObject):
         target_height: float,
         up_axis: str,
     ) -> list[trimesh.Trimesh]:
-        loaded = trimesh.load(human_path, process=False, force="scene")
+        loaded = trimesh.load(str(human_path), process=False, force="scene")
 
         if isinstance(loaded, trimesh.Scene):
             geometries = list(loaded.dump(concatenate=False))
@@ -284,8 +287,8 @@ class PlyToGlbWorker(QObject):
         try:
             self.log.emit("Starting PLY to GLB conversion...")
 
-            input_path = PLY_DIR / self.mesh_id / FINAL_MESH
-            output_path = PLY_DIR / self.mesh_id / "mesh.glb"
+            input_path = Path(PLY_DIR) / self.mesh_id / FINAL_MESH
+            output_path = Path(PLY_DIR) / self.mesh_id / "mesh.glb"
 
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -293,7 +296,7 @@ class PlyToGlbWorker(QObject):
                 raise FileNotFoundError(f"File not found at {input_path}")
 
             self.log.emit(f"Reading PLY file: {input_path}")
-            loaded = trimesh.load(input_path, process=False)
+            loaded = trimesh.load(str(input_path), process=False)
 
             if isinstance(loaded, trimesh.Scene):
                 if not loaded.geometry:

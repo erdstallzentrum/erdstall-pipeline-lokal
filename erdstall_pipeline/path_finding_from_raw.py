@@ -101,7 +101,7 @@ def voxel_to_world(
 def read_points() -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     path = Path(FILES_DIR) / PATH_POINTS_FILENAME
 
-    with open(path, "r", encoding="utf-8") as f:
+    with path.open("r", encoding="utf-8") as f:
         lines = f.readlines()
 
     if len(lines) < 2:
@@ -120,8 +120,8 @@ def read_points() -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     print(f"MeshLab start: {(start_x, start_y, start_z)} -> voxel: {(start_vx, start_vy, start_vz)}")
     print(f"MeshLab end: {(end_x, end_y, end_z)} -> voxel: {(end_vx, end_vy, end_vz)}")
 
-    start = (start_vz, start_vy, start_vx)  # z, y, x
-    end = (end_vz, end_vy, end_vx)          # z, y, x
+    start = (start_vz, start_vy, start_vx)
+    end = (end_vz, end_vy, end_vx)
 
     return start, end
 
@@ -436,8 +436,8 @@ def compute_skeleton_csv() -> str:
     skeleton_raw_path = Path(FILES_DIR) / SKELETON_VOLUME_FILENAME
     volume_raw_path = Path(FILES_DIR) / VOLUME_FILENAME
 
-    skeleton_vol = np.fromfile(skeleton_raw_path, dtype=np.uint8)
-    volume_vol = np.fromfile(volume_raw_path, dtype=np.uint8)
+    skeleton_vol = np.fromfile(str(skeleton_raw_path), dtype=np.uint8)
+    volume_vol = np.fromfile(str(volume_raw_path), dtype=np.uint8)
 
     expected_size = SIZE * SIZE * SIZE
 
@@ -526,7 +526,7 @@ def compute_skeleton_csv() -> str:
 
         lines.append(f"{i};{world_x};{world_y};{world_z};{prev_id};{next_id}")
 
-    with open(out_csv, "w", encoding="utf-8") as f:
+    with out_csv.open("w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
     return str(out_csv)

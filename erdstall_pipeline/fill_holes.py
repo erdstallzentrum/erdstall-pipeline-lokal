@@ -405,8 +405,8 @@ def close_mesh_holes_below_top_percent(
 
 
 def fill_holes(
-    input_file: str,
-    output_file: str,
+    input_file: str | Path,
+    output_file: str | Path,
     settings: FillHolesSettings | None = None,
     log_callback: LogCallback = None,
 ) -> None:

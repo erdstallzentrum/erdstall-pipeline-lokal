@@ -7,11 +7,16 @@ import pymeshlab
 LogCallback = Callable[[str], None] | None
 
 def find_patches(
-    filled_holes_input_file: str, 
-    original_input_file: str,
-    output_files_path: str,
+    filled_holes_input_file: str | Path,
+    original_input_file: str | Path ,
+    output_files_path: str | Path ,
     log_callback: LogCallback = None
 ) -> None:
+
+    filled_holes_input_file = Path(filled_holes_input_file)
+    original_input_file = Path(original_input_file)
+    out_dir = Path(output_files_path)
+
     def log(message: str)-> None:
         if log_callback is not None:
             log_callback(message)
@@ -21,9 +26,9 @@ def find_patches(
     log("Finding patches...")
     ms = pymeshlab.MeshSet()
     log("Loading original mesh...")
-    ms.load_new_mesh(original_input_file)
+    ms.load_new_mesh(str(original_input_file))
     log("Loading repaierd mesh...")
-    ms.load_new_mesh(filled_holes_input_file)
+    ms.load_new_mesh(str(filled_holes_input_file))
     log("Computing Hausdorff distance...")
     ms.get_hausdorff_distance(
         sampledmesh=1,
@@ -42,7 +47,6 @@ def find_patches(
     log("Splitting connected components...")
     ms.generate_splitting_by_connected_components(delete_source_mesh=True)
 
-    out_dir = Path(output_files_path)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     log(f"Saving patch meshes to: {out_dir}")
@@ -72,22 +76,22 @@ def find_patches(
 
     result = {'total_patches': len(patches), 'patches': patches}
     json_path = out_dir.parent / 'patches.json'
-    with open(json_path, 'w', encoding='utf-8') as f:
+    with json_path.open( 'w', encoding='utf-8') as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
     
     log("Finding patches done.")
 
 
 def get_patches_json(mesh_dir: str):
-    path = Path(mesh_dir) / 'patches.json'
+    path = Path(mesh_dir) / "patches.json"
     if not path.exists():
         return None
-    with open(path, 'r', encoding='utf-8') as f:
+    with path.open('r', encoding='utf-8') as f:
         return json.load(f)
 
 
-def get_patches_paths(mesh_dir: str):
-    data = get_patches_json(mesh_dir)
+def get_patches_paths(mesh_dir: str | Path):
+    data = get_patches_json(str(mesh_dir))
     if data is None:
         return None
-    return [patch['path'] for patch in data['patches']]
+    return [patch["path"] for patch in data["patches"]]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import QObject, Signal, Slot
 
 
@@ -9,11 +11,11 @@ class ProjectInitWorker(QObject):
     error = Signal(str)
     log = Signal(str)
 
-    def __init__(self, mesh_id: str, mesh_file: str, texture_dir: str | None)-> None:
+    def __init__(self, mesh_id: str, mesh_file: str | Path, texture_dir: str | Path | None)-> None:
         super().__init__()
         self.mesh_id = mesh_id
-        self.mesh_file = mesh_file
-        self.texture_dir = texture_dir
+        self.mesh_file = Path(mesh_file)
+        self.texture_dir = Path(texture_dir) if texture_dir else None
 
     @Slot()
     def run(self)-> None:

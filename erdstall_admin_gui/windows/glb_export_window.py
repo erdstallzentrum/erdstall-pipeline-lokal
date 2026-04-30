@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtWidgets import QDialog, QWidget, QVBoxLayout, QGroupBox, QFormLayout, QCheckBox, QLineEdit, QPushButton, \
     QHBoxLayout, QComboBox, QFileDialog, QDoubleSpinBox
 
@@ -80,7 +82,7 @@ class GlbExportWindow(QDialog):
         defaults = GlbExportSettings()
 
         self.add_human_scale.setChecked(defaults.add_human_scale)
-        self.human_model_path.setText(defaults.human_model_path)
+        self.human_model_path.setText(str(defaults.human_model_path))
         self.human_height.setValue(defaults.human_height)
         self.human_floor_offset.setValue(defaults.human_floor_offset)
 
@@ -115,7 +117,9 @@ class GlbExportWindow(QDialog):
     def get_settings(self) -> GlbExportSettings:
         return GlbExportSettings(
             add_human_scale=self.add_human_scale.isChecked(),
-            human_model_path=self.human_model_path.text().strip() or "public/person.glb",
+            human_model_path=Path(
+                self.human_model_path.text().strip() or "public/person.glb"
+            ).expanduser(),
             human_height=self.human_height.value(),
             human_floor_offset=self.human_floor_offset.value(),
             human_up_axis=self.human_up_axis.currentText(),

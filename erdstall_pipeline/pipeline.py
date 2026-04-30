@@ -99,7 +99,11 @@ def run_fill(
     )
 
     if settings.reduce_size:
-        reduce_file_size(str(output_mesh), initial_mesh_reduction=True)
+        reduce_file_size(
+            str(output_mesh),
+            initial_mesh_reduction=True,
+            compression_percentage=settings.mesh_reduction_percent,
+        )
 
     return output_mesh
 
@@ -174,5 +178,4 @@ def run_finalize(mesh_id: str, unused_patches: list[str] | None = None) -> Path:
     else:
         shutil.copy2(repaired, final_mesh)
 
-    reduce_file_size(str(final_mesh), initial_mesh_reduction=False)
     return final_mesh

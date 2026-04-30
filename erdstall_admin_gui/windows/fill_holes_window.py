@@ -105,12 +105,13 @@ class FillHolesWindow(QDialog):
 
         self.transfer_texture = QCheckBox("Transfer texture to vertex colors")
         self.reduce_size = QCheckBox("Reduce file size after repair")
-
+        self.mesh_reduction_percent = self._doublespinbox(0.0, 95.0, 1.0, 5)
         output_form.addRow("Smooth mesh:", self.smooth_mesh_input)
         output_form.addRow(
             "Smoothing iterations:",
             self.mesh_smoothing_iterations,
         )
+        output_form.addRow("Mesh reduction percent:", self.mesh_reduction_percent)
 
         # ------------------------------------------------------------
         # Buttons
@@ -140,6 +141,7 @@ class FillHolesWindow(QDialog):
         self.smooth_mesh_input.toggled.connect(
             self.mesh_smoothing_iterations.setEnabled
         )
+        self.reduce_size.toggled.connect(self.mesh_reduction_percent.setEnabled)
 
     def _load_defaults(self) -> None:
         defaults = FillHolesSettings()
@@ -170,6 +172,10 @@ class FillHolesWindow(QDialog):
 
         self.transfer_texture.setChecked(defaults.transfer_texture_to_vertex_colors)
         self.reduce_size.setChecked(defaults.reduce_size)
+        self.mesh_reduction_percent.setValue(
+            getattr(defaults, "mesh_reduction_percent", 15.0)
+        )
+        self.mesh_reduction_percent.setEnabled(defaults.reduce_size)
 
     def _update_mode_ui(self) -> None:
         mode = self.fill_mode.currentText()
@@ -221,6 +227,7 @@ class FillHolesWindow(QDialog):
             smooth_mesh_input=self.smooth_mesh_input.isChecked(),
             mesh_smoothing_iterations=self.mesh_smoothing_iterations.value(),
             reduce_size=self.reduce_size.isChecked(),
+            mesh_reduction_percent=self.mesh_reduction_percent.value(),
         )
 
     @staticmethod

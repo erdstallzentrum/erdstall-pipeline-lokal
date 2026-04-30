@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from config import INITIAL_MESH_REDUCTION_FACTOR
+
 
 @dataclass
 class FillHolesSettings:
@@ -25,3 +27,4 @@ class FillHolesSettings:
     mesh_smoothing_iterations: int = 3
 
     reduce_size: bool = False
+    mesh_reduction_percent: float = INITIAL_MESH_REDUCTION_FACTOR

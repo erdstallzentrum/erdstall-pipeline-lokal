@@ -36,7 +36,11 @@ def _save_mesh(ms: pymeshlab.MeshSet, file_path: str | Path) -> None:
     )
 
 
-def reduce_file_size(file_path: str | Path, initial_mesh_reduction: bool = True) -> str | None:
+def reduce_file_size(
+        file_path: str | Path,
+        initial_mesh_reduction: bool = True,
+        compression_percentage: float | None = None
+) -> str | None:
     input_path = Path(file_path)
 
     ms = pymeshlab.MeshSet()
@@ -53,7 +57,12 @@ def reduce_file_size(file_path: str | Path, initial_mesh_reduction: bool = True)
 
     ms_version = pymeshlab.MeshSet()
     ms_version.load_new_mesh(file_path)
-    _apply_decimation(ms_version, MOBILE_COMPRESSION_PERCENT, original_faces)
+    reduction_percent =(
+        INITIAL_MESH_REDUCTION_FACTOR
+        if compression_percentage is None
+        else compression_percentage
+    )
+    _apply_decimation(ms_version, reduction_percent, original_faces)
 
     output_path = input_path.with_name(f"{input_path.stem}_mobile{input_path.suffix}")
     

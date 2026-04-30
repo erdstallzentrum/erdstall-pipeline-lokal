@@ -71,7 +71,11 @@ class FillHolesWorker(QObject):
 
             if self.settings.reduce_size:
                 self.log.emit("Reducing repaired mesh file size...")
-                reduce_file_size(str(output_mesh), initial_mesh_reduction=True)
+                reduce_file_size(
+                    str(output_mesh),
+                    initial_mesh_reduction=True,
+                    compression_percentage=self.settings.mesh_reduction_percent,
+                )
                 self.log.emit("Mesh reduction done.")
             else:
                 self.log.emit("Skipping mesh reduction.")

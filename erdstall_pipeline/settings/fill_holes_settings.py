@@ -11,7 +11,7 @@ class FillHolesSettings:
 
     close_holes_on_mesh_input: bool = True
     close_hole_under_percent: float = 0.10
-
+    max_hole_boundary_vertices: int = 200
     poisson_depth: int = 10
     poisson_fulldepth: int = 5
     poisson_cgdepth: int = 0

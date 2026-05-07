@@ -198,6 +198,7 @@ def smooth_current_mesh(
 def close_mesh_holes_below_top_percent(
     ms: pymeshlab.MeshSet,
     top_ignore_percent: float,
+    max_hole_boundary_vertices: int = 200,
     log_callback: Callable[[str], None] | None = None,
 ) -> int:
     def log(message: str) -> None:
@@ -217,6 +218,11 @@ def close_mesh_holes_below_top_percent(
 
     top_ignore_percent = max(0.0, min(1.0, float(top_ignore_percent)))
 
+    max_hole_boundary_vertices = int(max_hole_boundary_vertices)
+
+    if max_hole_boundary_vertices < 0:
+        max_hole_boundary_vertices = 0
+
     min_z = float(vertices[:, 2].min())
     max_z = float(vertices[:, 2].max())
     height = max_z - min_z
@@ -227,9 +233,16 @@ def close_mesh_holes_below_top_percent(
 
     z_cutoff = max_z - height * top_ignore_percent
 
+    size_limit_text = (
+        "no size limit"
+        if max_hole_boundary_vertices == 0
+        else f"max {max_hole_boundary_vertices:,} boundary vertices"
+    )
+
     log(
         f"Selective mesh hole closing. "
         f"Ignoring top {top_ignore_percent * 100:.1f}% of model. "
+        f"Hole size limit: {size_limit_text}. "
         f"min_z={min_z:.6f}, max_z={max_z:.6f}, cutoff_z={z_cutoff:.6f}"
     )
 
@@ -319,12 +332,17 @@ def close_mesh_holes_below_top_percent(
 
     closed_count = 0
     skipped_top_count = 0
+    skipped_large_count = 0
     skipped_invalid_count = 0
     created_faces = 0
 
     for loop in loops:
         if len(loop) < 3:
             skipped_invalid_count += 1
+            continue
+
+        if max_hole_boundary_vertices > 0 and len(loop) > max_hole_boundary_vertices:
+            skipped_large_count += 1
             continue
 
         loop_array = np.asarray(loop, dtype=np.int64)
@@ -355,6 +373,7 @@ def close_mesh_holes_below_top_percent(
         log(
             f"No holes closed. Found {len(loops):,} boundary loop(s). "
             f"Skipped top-zone holes: {skipped_top_count:,}. "
+            f"Skipped large holes: {skipped_large_count:,}. "
             f"Skipped invalid holes: {skipped_invalid_count:,}."
         )
         return _mesh_count(ms) - 1
@@ -398,6 +417,7 @@ def close_mesh_holes_below_top_percent(
     log(
         f"Closed {closed_count:,} hole(s) below cutoff. "
         f"Skipped {skipped_top_count:,} hole(s) in top zone. "
+        f"Skipped {skipped_large_count:,} large hole(s). "
         f"Created {created_faces:,} face(s)."
     )
 
@@ -500,6 +520,11 @@ def fill_holes(
         final_mesh_index = close_mesh_holes_below_top_percent(
             ms,
             top_ignore_percent=settings.close_hole_under_percent,
+            max_hole_boundary_vertices=getattr(
+                settings,
+                "max_hole_boundary_vertices",
+                200,
+            ),
             log_callback=log,
         )
         ms.set_current_mesh(final_mesh_index)

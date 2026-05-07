@@ -63,10 +63,16 @@ class FillHolesWindow(QDialog):
         self.repair_group = repair_group
 
         self.close_hole_under_percent = self._doublespinbox(0.0, 1.0, 0.01, 2)
+        self.max_hole_boundary_vertices = self._spinbox(0, 100_000)
 
         repair_form.addRow(
             "Ignore top percent:",
             self.close_hole_under_percent,
+        )
+
+        repair_form.addRow(
+            "Max hole boundary vertices:",
+            self.max_hole_boundary_vertices,
         )
 
         # ------------------------------------------------------------
@@ -157,6 +163,9 @@ class FillHolesWindow(QDialog):
 
         self.close_hole_under_percent.setValue(defaults.close_hole_under_percent)
 
+        self.max_hole_boundary_vertices.setValue(
+            getattr(defaults, "max_hole_boundary_vertices", 200)
+        )
         self.poisson_depth.setValue(defaults.poisson_depth)
         self.poisson_fulldepth.setValue(defaults.poisson_fulldepth)
         self.poisson_cgdepth.setValue(defaults.poisson_cgdepth)
@@ -215,6 +224,7 @@ class FillHolesWindow(QDialog):
             run_poisson_on_mesh=run_poisson_on_mesh,
             close_holes_on_mesh_input=close_holes_on_mesh_input,
             close_hole_under_percent=self.close_hole_under_percent.value(),
+            max_hole_boundary_vertices=self.max_hole_boundary_vertices.value(),
             poisson_depth=self.poisson_depth.value(),
             poisson_fulldepth=self.poisson_fulldepth.value(),
             poisson_cgdepth=self.poisson_cgdepth.value(),

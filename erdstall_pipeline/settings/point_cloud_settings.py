@@ -1,55 +1,50 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 
 @dataclass
 class PointCloudSettings:
-    # High quality voxel size.
-    # If your model units are meters, 0.01 = 1 cm.
-    # For even more detail try 0.005, but it can get very heavy.
-    downsample_size: float = 0.01
+    # Reconstruction mode
+    reconstruction_method: str = "cave_smooth"
+    # Options:
+    # "cave_realistic"
+    # "cave_smooth"
+    # "poisson"
 
-    # High-quality cap. Allows more detail than 1.5M.
-    # If your PC has less than 32 GB RAM, use 2_000_000 instead.
-    max_points_for_poisson: int = 3_000_000
+    # Preprocessing
+    # 0.005 keeps high detail but still regularizes the scan slightly.
+    # Use 0.0 only if the point cloud is already very clean.
+    downsample_size: float = 0.005
+    max_points_for_poisson: int = 5_000_000
+    spacing_sample_size: int = 300_000
 
-    # Enough for stable spacing estimation without wasting too much time.
-    spacing_sample_size: int = 50_000
-
-    # Smaller radius keeps sharper details.
-    # Too high = blobby.
-    normal_radius_factor: float = 2.5
-
-    # Good detail/stability balance.
-    normal_max_nn: int = 30
-
+    # Normals
+    normal_radius_factor: float = 3.5
+    normal_max_nn: int = 120
     orient_normals: bool = True
-    orient_normals_k: int = 16
+    orient_normals_k: int = 50
 
-    # High-quality Poisson.
-    # 10 is a strong default.
-    # 11 can be very heavy.
+    # Ball Pivoting / Cave mode
+    # Good high-detail cave preset.
+    ball_radius_1: float = 1.1
+    ball_radius_2: float = 1.8
+    ball_radius_3: float = 3.0
+    ball_radius_4: float = 5.0
+
+    remove_small_components: bool = True
+    min_component_triangle_ratio: float = 0.0005
+
+    # Keep OFF unless you actually implemented safe small-hole filling.
+    fill_small_holes: bool = False
+    max_hole_size: int = 100
+
+    # Poisson fallback settings
     poisson_depth: int = 10
-
-    poisson_scale: float = 1.02
-
-    # Linear fit usually preserves sharper details better.
-    poisson_linear_fit: bool = True
-
-    # Low trim so thin boat parts do not disappear.
-    # 0.03 or 0.08 is too aggressive for rails/pipes/windows.
-    poisson_density_quantile: float = 0.005
-
-    # Smoothing makes hard-surface models look melted.
-    smoothing_iterations: int = 0
-
-    color_transfer_chunk_size: int = 100_000
-
-    # Do not use 0 if 0 means auto/all cores.
-    # 4 keeps Windows more responsive.
-    poisson_threads: int = 4
-
-    # For best quality, do not silently lower depth.
-    # If it crashes, set this back to True.
+    poisson_scale: float = 1.6
+    poisson_linear_fit: bool = False
+    poisson_density_quantile: float = 0.01
+    poisson_threads: int = 0
     auto_limit_poisson_depth: bool = False
+
+    # Output
+    smoothing_iterations: int = 0
+    color_transfer_chunk_size: int = 1_000_000

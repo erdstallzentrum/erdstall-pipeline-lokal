@@ -1,6 +1,7 @@
 from pathlib import Path
 import shutil
 
+from config import CONVERTED_MESH
 from .clear_patches import clear_patches
 from .config import FINAL_MESH, ORIGINAL_MESH, PATCHES_DIR, PLY_DIR, REPAIRED_MESH, TEXTURE_DIR, BACKUP_TEXTURE_DIR
 from .fill_holes import fill_holes
@@ -73,6 +74,7 @@ def run_fill(
 
     base = create_project_structure(mesh_id)
     original = base / ORIGINAL_MESH
+    converted = base / CONVERTED_MESH
     repaired = base / REPAIRED_MESH
 
     if is_point_cloud_project(mesh_id):
@@ -82,7 +84,7 @@ def run_fill(
                 "Run Convert Point Cloud to Mesh before Fill Holes."
             )
 
-        input_mesh = repaired
+        input_mesh = converted
         output_mesh = repaired
     else:
         if not original.exists():

@@ -5,7 +5,7 @@ from pathlib import Path
 import open3d as o3d
 from PySide6.QtCore import QObject, Signal, Slot
 
-from erdstall_pipeline.config import ORIGINAL_MESH, PLY_DIR, REPAIRED_MESH
+from erdstall_pipeline.config import ORIGINAL_MESH, PLY_DIR, REPAIRED_MESH, CONVERTED_MESH
 from erdstall_pipeline.convert_point_cloud import point_cloud_to_mesh
 from erdstall_pipeline.settings.point_cloud_settings import PointCloudSettings
 
@@ -31,7 +31,7 @@ class PointCloudToMeshWorker(QObject):
         try:
             project_dir = Path(PLY_DIR) / self.mesh_id
             input_path = project_dir / ORIGINAL_MESH
-            output_path = project_dir / REPAIRED_MESH
+            output_path = project_dir / CONVERTED_MESH
 
             if not input_path.exists():
                 raise FileNotFoundError(f"Original point cloud not found: {input_path}")
@@ -45,10 +45,15 @@ class PointCloudToMeshWorker(QObject):
             self._log(f"Point cloud has {len(pcd.points)} points.")
 
             self._log("Converting point cloud to mesh...")
+            self._log(
+                f"Reconstruction method: "
+                f"{getattr(self.settings, 'reconstruction_method', 'poisson')}"
+            )
+
             mesh = point_cloud_to_mesh(
                 pcd,
                 settings=self.settings,
-                log_callback=self._log
+                log_callback=self._log,
             )
 
             if mesh.is_empty():

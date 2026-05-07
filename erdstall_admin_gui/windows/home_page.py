@@ -23,7 +23,7 @@ from erdstall_pipeline.config import (
     PATH_POINTS_FILENAME,
     PLY_DIR,
     REPAIRED_MESH,
-    TEXTURE_DIR,
+    TEXTURE_DIR, CONVERTED_MESH,
 )
 
 from erdstall_admin_gui.widgets.flow_layout import FlowLayout
@@ -84,14 +84,15 @@ class HomePage(QWidget):
 
         self.status_labels: dict[str, QLabel] = {}
         self._add_status_row(0, "Original mesh")
-        self._add_status_row(1, "Repaired mesh")
-        self._add_status_row(2, "Final mesh")
-        self._add_status_row(3, "Mobile mesh")
-        self._add_status_row(4, "Patches folder")
-        self._add_status_row(5, "Textures folder")
-        self._add_status_row(6, "Texture backup")
-        self._add_status_row(7, "Path JSON")
-        self._add_status_row(8, "Path points CSV")
+        self._add_status_row(1, "Converted mesh")
+        self._add_status_row(2, "Repaired mesh")
+        self._add_status_row(3, "Final mesh")
+        self._add_status_row(4, "Mobile mesh")
+        self._add_status_row(5, "Patches folder")
+        self._add_status_row(6, "Textures folder")
+        self._add_status_row(7, "Texture backup")
+        self._add_status_row(8, "Path JSON")
+        self._add_status_row(9, "Path points CSV")
 
         main_layout.addWidget(overview_box)
 
@@ -207,6 +208,7 @@ class HomePage(QWidget):
         project_dir = self.current_project_dir
 
         original_mesh = project_dir / ORIGINAL_MESH
+        converted_mesh = project_dir / CONVERTED_MESH
         repaired_mesh = project_dir / REPAIRED_MESH
         final_mesh = project_dir / FINAL_MESH
         mobile_mesh = project_dir / "mesh_mobile.ply"
@@ -217,11 +219,13 @@ class HomePage(QWidget):
         path_points_csv = project_dir / PATH_POINTS_FILENAME
 
         original_exists = original_mesh.exists()
+        converted_exists = converted_mesh.exists()
         repaired_exists = repaired_mesh.exists()
         path_points_exists = path_points_csv.exists()
         final_exists = final_mesh.exists()
 
         self._set_status("Original mesh", original_exists)
+        self._set_status("Converted mesh", converted_exists)
         self._set_status("Repaired mesh", repaired_exists)
         self._set_status("Final mesh", final_exists)
         self._set_status("Mobile mesh", mobile_mesh.exists())
@@ -239,7 +243,7 @@ class HomePage(QWidget):
         self.convert_point_cloud_button.setEnabled(is_point_cloud and original_exists)
 
         if is_point_cloud:
-            self.fill_holes_button.setEnabled(repaired_exists)
+            self.fill_holes_button.setEnabled(converted_exists)
         else:
             self.fill_holes_button.setEnabled(original_exists)
 

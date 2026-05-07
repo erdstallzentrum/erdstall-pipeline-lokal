@@ -405,8 +405,33 @@ def _clean_mesh(
     log("Open3D mesh cleanup done.")
     return mesh
 
-
 def point_cloud_to_mesh(
+    pcd: o3d.geometry.PointCloud,
+    settings: PointCloudSettings | None = None,
+    log_callback: LogCallback = None,
+) -> o3d.geometry.TriangleMesh:
+    if settings is None:
+        settings = PointCloudSettings()
+
+    method = getattr(settings, "reconstruction_method", "cave_smooth")
+
+    if method in {"cave_smooth", "cave_realistic"}:
+        return _point_cloud_to_mesh_ball_pivoting(
+            pcd=pcd,
+            settings=settings,
+            log_callback=log_callback,
+        )
+
+    if method == "poisson":
+        return _point_cloud_to_mesh_poisson(
+            pcd=pcd,
+            settings=settings,
+            log_callback=log_callback,
+        )
+
+    raise ValueError(f"Unknown reconstruction method: {method}")
+
+def _point_cloud_to_mesh_poisson(
     pcd: o3d.geometry.PointCloud,
     settings: PointCloudSettings | None = None,
     log_callback: LogCallback = None,
@@ -588,6 +613,263 @@ def point_cloud_to_mesh(
             log=log,
             chunk_size=int(settings.color_transfer_chunk_size),
         )
+    else:
+        log("Skipping color transfer: point cloud has no colors.")
+
+    log("Computing vertex normals...")
+    mesh.compute_vertex_normals()
+    log("Vertex normals computed.")
+
+    return mesh
+
+def _remove_small_mesh_components(
+    mesh: o3d.geometry.TriangleMesh,
+    log: Callable[[str], None],
+    min_triangle_ratio: float = 0.005,
+) -> o3d.geometry.TriangleMesh:
+    if mesh.is_empty() or len(mesh.triangles) == 0:
+        return mesh
+
+    log("Removing small disconnected mesh components...")
+
+    triangle_clusters, cluster_n_triangles, _ = mesh.cluster_connected_triangles()
+
+    triangle_clusters = np.asarray(triangle_clusters)
+    cluster_n_triangles = np.asarray(cluster_n_triangles)
+
+    if cluster_n_triangles.size == 0:
+        return mesh
+
+    largest_component_size = int(cluster_n_triangles.max())
+    min_triangles = max(20, int(largest_component_size * min_triangle_ratio))
+
+    triangles_to_remove = np.zeros(len(mesh.triangles), dtype=bool)
+
+    for cluster_id, triangle_count in enumerate(cluster_n_triangles):
+        if triangle_count < min_triangles:
+            triangles_to_remove[triangle_clusters == cluster_id] = True
+
+    removed_count = int(np.count_nonzero(triangles_to_remove))
+
+    if removed_count > 0:
+        mesh.remove_triangles_by_mask(triangles_to_remove)
+        mesh.remove_unreferenced_vertices()
+
+    log(f"Removed {removed_count:,} triangle(s) from small components.")
+
+    return mesh
+
+
+def _point_cloud_to_mesh_ball_pivoting(
+    pcd: o3d.geometry.PointCloud,
+    settings: PointCloudSettings | None = None,
+    log_callback: LogCallback = None,
+) -> o3d.geometry.TriangleMesh:
+    if settings is None:
+        settings = PointCloudSettings()
+
+    def log(message: str) -> None:
+        if log_callback is not None:
+            log_callback(message)
+        else:
+            print(message)
+
+    if pcd.is_empty():
+        raise ValueError("Point cloud is empty.")
+
+    log("Running Cave / Ball Pivoting reconstruction...")
+    log(f"Input point count: {len(pcd.points):,}")
+
+    # ------------------------------------------------------------
+    # Basic cleanup
+    # ------------------------------------------------------------
+    try:
+        pcd = pcd.remove_non_finite_points()
+        log(f"After removing non-finite points: {len(pcd.points):,}")
+    except Exception as e:
+        log(f"Removing non-finite points skipped: {e}")
+
+    try:
+        pcd = pcd.remove_duplicated_points()
+        log(f"After removing duplicated points: {len(pcd.points):,}")
+    except Exception as e:
+        log(f"Removing duplicated points skipped: {e}")
+
+    if pcd.is_empty():
+        raise ValueError("Point cloud became empty after basic cleanup.")
+
+    # ------------------------------------------------------------
+    # Downsample
+    # ------------------------------------------------------------
+    downsample_size = float(settings.downsample_size)
+
+    if downsample_size > 0:
+        log(f"Downsampling point cloud with voxel size {downsample_size:.6f}...")
+        pcd = pcd.voxel_down_sample(voxel_size=downsample_size)
+        log(f"After downsampling: {len(pcd.points):,} points.")
+    else:
+        log("Skipping voxel downsampling.")
+
+    if pcd.is_empty():
+        raise ValueError("Point cloud became empty after downsampling.")
+
+    # ------------------------------------------------------------
+    # Estimate spacing
+    # ------------------------------------------------------------
+    points = np.asarray(pcd.points, dtype=np.float64)
+
+    if points.shape[0] < 3:
+        raise ValueError("Need at least 3 points for Ball Pivoting.")
+
+    log("Creating KDTree for spacing estimation...")
+    tree = cKDTree(points)
+
+    avg_spacing = _estimate_average_spacing(
+        points=points,
+        tree=tree,
+        log=log,
+        sample_size=int(settings.spacing_sample_size),
+    )
+
+    log(f"Average point spacing: {avg_spacing:.6f}")
+
+    # ------------------------------------------------------------
+    # Gentle outlier removal
+    # ------------------------------------------------------------
+    try:
+        radius = avg_spacing * 4.0
+        min_neighbors = 6
+
+        log(
+            f"Removing radius outliers: "
+            f"radius={radius:.6f}, min_neighbors={min_neighbors}..."
+        )
+
+        pcd, _ = pcd.remove_radius_outlier(
+            nb_points=min_neighbors,
+            radius=radius,
+        )
+
+        log(f"After radius outlier removal: {len(pcd.points):,}")
+    except Exception as e:
+        log(f"Radius outlier removal skipped: {e}")
+
+    if pcd.is_empty():
+        raise ValueError("Point cloud became empty after outlier removal.")
+
+    points = np.asarray(pcd.points, dtype=np.float64)
+
+    # ------------------------------------------------------------
+    # Normals
+    # ------------------------------------------------------------
+    normal_radius, normal_max_nn = _safe_normal_settings(
+        point_count=len(pcd.points),
+        avg_spacing=avg_spacing,
+        settings=settings,
+        log=log,
+    )
+
+    _estimate_normals_safely(
+        pcd=pcd,
+        normal_radius=normal_radius,
+        normal_max_nn=normal_max_nn,
+        log=log,
+    )
+
+    _orient_normals_safely(
+        pcd=pcd,
+        settings=settings,
+        log=log,
+    )
+
+    # ------------------------------------------------------------
+    # Ball Pivoting
+    # ------------------------------------------------------------
+    radius_factors = [
+        float(getattr(settings, "ball_radius_1", 1.5)),
+        float(getattr(settings, "ball_radius_2", 2.5)),
+        float(getattr(settings, "ball_radius_3", 4.0)),
+        float(getattr(settings, "ball_radius_4", 6.0)),
+    ]
+
+    radii = [avg_spacing * factor for factor in radius_factors if factor > 0]
+
+    if not radii:
+        raise ValueError("No valid Ball Pivoting radii configured.")
+
+    log(
+        "Running Ball Pivoting with radii: "
+        + ", ".join(f"{radius:.6f}" for radius in radii)
+    )
+
+    mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
+        pcd,
+        o3d.utility.DoubleVector(radii),
+    )
+
+    log(
+        f"Ball Pivoting created {len(mesh.vertices):,} vertices "
+        f"and {len(mesh.triangles):,} faces."
+    )
+
+    if mesh.is_empty():
+        raise ValueError("Ball Pivoting produced an empty mesh.")
+
+    mesh = _clean_mesh(mesh, log)
+
+    # ------------------------------------------------------------
+    # Remove tiny floating islands
+    # ------------------------------------------------------------
+    if bool(getattr(settings, "remove_small_components", True)):
+        mesh = _remove_small_mesh_components(
+            mesh=mesh,
+            log=log,
+            min_triangle_ratio=float(
+                getattr(settings, "min_component_triangle_ratio", 0.005)
+            ),
+        )
+    else:
+        log("Skipping small component removal.")
+
+    # ------------------------------------------------------------
+    # Optional smoothing
+    # ------------------------------------------------------------
+    smoothing_iterations = int(getattr(settings, "smoothing_iterations", 0))
+
+    if smoothing_iterations > 0:
+        log(f"Applying Taubin smoothing, iterations={smoothing_iterations}...")
+
+        mesh = mesh.filter_smooth_taubin(
+            number_of_iterations=smoothing_iterations,
+            lambda_filter=0.5,
+            mu=-0.53,
+        )
+
+        mesh = _clean_mesh(mesh, log)
+        log("Taubin smoothing done.")
+    else:
+        log("Skipping smoothing.")
+
+    # ------------------------------------------------------------
+    # Colors
+    # ------------------------------------------------------------
+    if pcd.has_colors():
+        log("Transferring point colors to mesh...")
+
+        points = np.asarray(pcd.points, dtype=np.float64)
+        colors = np.asarray(pcd.colors, dtype=np.float64)
+
+        if len(mesh.vertices) == len(points):
+            mesh.vertex_colors = o3d.utility.Vector3dVector(colors)
+            log("Color transfer done by direct vertex assignment.")
+        else:
+            _transfer_colors_to_vertices(
+                mesh=mesh,
+                points=points,
+                colors=colors,
+                log=log,
+                chunk_size=int(settings.color_transfer_chunk_size),
+            )
     else:
         log("Skipping color transfer: point cloud has no colors.")
 

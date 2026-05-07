@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from config import CONVERTED_MESH
 from erdstall_pipeline.config import ORIGINAL_MESH, REPAIRED_MESH
 from erdstall_pipeline.settings.fill_holes_settings import FillHolesSettings
 
@@ -33,6 +34,7 @@ class FillHolesWorker(QObject):
 
             base = mesh_base_dir(self.mesh_id)
             original = base / ORIGINAL_MESH
+            converted = base / CONVERTED_MESH
             repaired = base / REPAIRED_MESH
 
             self.log.emit(f"Starting fill holes for project: {self.mesh_id}")
@@ -43,13 +45,13 @@ class FillHolesWorker(QObject):
                 self.log.emit("Project type detected: point cloud")
                 self.log.emit("Using converted mesh as Fill Holes input.")
 
-                if not repaired.exists():
+                if not converted.exists():
                     raise PipelineError(
                         "This is a point-cloud project. "
                         "Run Convert Point Cloud to Mesh before Fill Holes."
                     )
 
-                input_mesh = repaired
+                input_mesh = converted
                 output_mesh = repaired
             else:
                 self.log.emit("Project type detected: mesh")

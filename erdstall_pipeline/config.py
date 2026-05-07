@@ -10,6 +10,7 @@ FILES_DIR = DATA_DIR / WORK_DIRNAME
 ORIGINAL_MESH = "original.ply"
 REPAIRED_MESH = "repaired_mesh.ply"
 FINAL_MESH = "mesh.ply"
+CONVERTED_MESH = "converted.ply"
 
 PATCHES_DIR = "patches"
 PATCHES_JSON = "patches.json"

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QVBoxLayout,
-    QWidget,
+    QWidget, QComboBox,
 )
 
 from erdstall_pipeline.settings.point_cloud_settings import PointCloudSettings
@@ -29,6 +29,54 @@ class PointCloudToMeshWindow(QDialog):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
+
+        # ------------------------------------------------------------
+        # Reconstruction mode
+        # ------------------------------------------------------------
+        mode_group = QGroupBox("Reconstruction Mode")
+        mode_form = QFormLayout(mode_group)
+
+        self.reconstruction_method = QComboBox()
+        self.reconstruction_method.addItem(
+            "Cave Smooth - recommended",
+            "cave_smooth",
+        )
+        self.reconstruction_method.addItem(
+            "Cave Realistic - keeps more holes/detail",
+            "cave_realistic",
+        )
+        self.reconstruction_method.addItem(
+            "Poisson Watertight - repair mode",
+            "poisson",
+        )
+
+        mode_form.addRow("Mode:", self.reconstruction_method)
+
+        # ------------------------------------------------------------
+        # Cave / Ball Pivoting Reconstruction
+        # ------------------------------------------------------------
+        self.cave_group = QGroupBox("Cave / Ball Pivoting Options")
+        cave_form = QFormLayout(self.cave_group)
+
+        self.ball_radius_1 = self._doublespinbox(0.1, 20.0, 0.1, 2)
+        self.ball_radius_2 = self._doublespinbox(0.1, 20.0, 0.1, 2)
+        self.ball_radius_3 = self._doublespinbox(0.1, 20.0, 0.1, 2)
+        self.ball_radius_4 = self._doublespinbox(0.1, 20.0, 0.1, 2)
+
+        self.remove_small_components = QCheckBox()
+        self.min_component_triangle_ratio = self._doublespinbox(0.0, 0.2, 0.001, 4)
+
+        self.fill_small_holes = QCheckBox()
+        self.max_hole_size = self._spinbox(1, 100_000)
+
+        cave_form.addRow("Ball radius factor 1:", self.ball_radius_1)
+        cave_form.addRow("Ball radius factor 2:", self.ball_radius_2)
+        cave_form.addRow("Ball radius factor 3:", self.ball_radius_3)
+        cave_form.addRow("Ball radius factor 4:", self.ball_radius_4)
+        cave_form.addRow("Remove small components:", self.remove_small_components)
+        cave_form.addRow("Min component ratio:", self.min_component_triangle_ratio)
+        cave_form.addRow("Fill small holes:", self.fill_small_holes)
+        cave_form.addRow("Max hole size:", self.max_hole_size)
 
         # ------------------------------------------------------------
         # Preprocessing
@@ -64,8 +112,8 @@ class PointCloudToMeshWindow(QDialog):
         # ------------------------------------------------------------
         # Poisson Reconstruction
         # ------------------------------------------------------------
-        poisson_group = QGroupBox("Poisson Reconstruction")
-        poisson_form = QFormLayout(poisson_group)
+        self.poisson_group = QGroupBox("Poisson Reconstruction")
+        poisson_form = QFormLayout(self.poisson_group)
 
         self.poisson_depth = self._spinbox(1, 14)
         self.poisson_scale = self._doublespinbox(0.1, 10.0, 0.01, 2)
@@ -106,9 +154,11 @@ class PointCloudToMeshWindow(QDialog):
         buttons.addWidget(self.cancel_button)
         buttons.addWidget(self.run_button)
 
+        layout.addWidget(mode_group)
         layout.addWidget(preprocess_group)
         layout.addWidget(normals_group)
-        layout.addWidget(poisson_group)
+        layout.addWidget(self.cave_group)
+        layout.addWidget(self.poisson_group)
         layout.addWidget(output_group)
         layout.addLayout(buttons)
 
@@ -116,6 +166,37 @@ class PointCloudToMeshWindow(QDialog):
         self.cancel_button.clicked.connect(self.reject)
         self.run_button.clicked.connect(self.accept)
         self.orient_normals.toggled.connect(self.orient_normals_k.setEnabled)
+        self.reconstruction_method.currentIndexChanged.connect(self._update_mode_ui)
+        self.fill_small_holes.toggled.connect(self.max_hole_size.setEnabled)
+        self.remove_small_components.toggled.connect(
+            self.min_component_triangle_ratio.setEnabled
+        )
+
+    def _update_mode_ui(self) -> None:
+        method = self.reconstruction_method.currentData()
+
+        is_poisson = method == "poisson"
+        is_cave = method in {"cave_smooth", "cave_realistic"}
+
+        self.cave_group.setVisible(is_cave)
+        self.poisson_group.setVisible(is_poisson)
+
+        # Cave presets
+        if method == "cave_realistic":
+            self.fill_small_holes.setChecked(False)
+            self.smoothing_iterations.setValue(0)
+
+        elif method == "cave_smooth":
+            self.fill_small_holes.setChecked(True)
+            self.smoothing_iterations.setValue(1)
+
+        elif method == "poisson":
+            self.smoothing_iterations.setValue(0)
+
+        self.max_hole_size.setEnabled(self.fill_small_holes.isChecked())
+        self.min_component_triangle_ratio.setEnabled(
+            self.remove_small_components.isChecked()
+        )
 
     def _load_defaults(self) -> None:
         defaults = PointCloudSettings()
@@ -146,21 +227,58 @@ class PointCloudToMeshWindow(QDialog):
         self.smoothing_iterations.setValue(defaults.smoothing_iterations)
         self.color_transfer_chunk_size.setValue(defaults.color_transfer_chunk_size)
 
+        index = self.reconstruction_method.findData(
+            getattr(defaults, "reconstruction_method", "cave_smooth")
+        )
+        if index >= 0:
+            self.reconstruction_method.setCurrentIndex(index)
+
+        self.ball_radius_1.setValue(getattr(defaults, "ball_radius_1", 1.5))
+        self.ball_radius_2.setValue(getattr(defaults, "ball_radius_2", 2.5))
+        self.ball_radius_3.setValue(getattr(defaults, "ball_radius_3", 4.0))
+        self.ball_radius_4.setValue(getattr(defaults, "ball_radius_4", 6.0))
+
+        self.remove_small_components.setChecked(
+            getattr(defaults, "remove_small_components", True)
+        )
+        self.min_component_triangle_ratio.setValue(
+            getattr(defaults, "min_component_triangle_ratio", 0.005)
+        )
+
+        self.fill_small_holes.setChecked(getattr(defaults, "fill_small_holes", False))
+        self.max_hole_size.setValue(getattr(defaults, "max_hole_size", 100))
+
+        self._update_mode_ui()
+
     def get_settings(self) -> PointCloudSettings:
         return PointCloudSettings(
+            reconstruction_method=self.reconstruction_method.currentData(),
+
             downsample_size=self.downsample_size.value(),
             max_points_for_poisson=self.max_points_for_poisson.value(),
             spacing_sample_size=self.spacing_sample_size.value(),
+
             normal_radius_factor=self.normal_radius_factor.value(),
             normal_max_nn=self.normal_max_nn.value(),
             orient_normals=self.orient_normals.isChecked(),
             orient_normals_k=self.orient_normals_k.value(),
+
+            ball_radius_1=self.ball_radius_1.value(),
+            ball_radius_2=self.ball_radius_2.value(),
+            ball_radius_3=self.ball_radius_3.value(),
+            ball_radius_4=self.ball_radius_4.value(),
+            remove_small_components=self.remove_small_components.isChecked(),
+            min_component_triangle_ratio=self.min_component_triangle_ratio.value(),
+            fill_small_holes=self.fill_small_holes.isChecked(),
+            max_hole_size=self.max_hole_size.value(),
+
             poisson_depth=self.poisson_depth.value(),
             poisson_scale=self.poisson_scale.value(),
             poisson_linear_fit=self.poisson_linear_fit.isChecked(),
             poisson_density_quantile=self.poisson_density_quantile.value(),
             poisson_threads=self.poisson_threads.value(),
             auto_limit_poisson_depth=self.auto_limit_poisson_depth.isChecked(),
+
             smoothing_iterations=self.smoothing_iterations.value(),
             color_transfer_chunk_size=self.color_transfer_chunk_size.value(),
         )

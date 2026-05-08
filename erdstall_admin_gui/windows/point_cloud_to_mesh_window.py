@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QVBoxLayout,
-    QWidget, QComboBox,
+    QWidget, QComboBox, QScrollArea, QLabel,
 )
 
 from erdstall_pipeline.settings.point_cloud_settings import PointCloudSettings
@@ -28,7 +28,15 @@ class PointCloudToMeshWindow(QDialog):
         self._connect()
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+
+        scroll_content = QWidget()
+        layout = QVBoxLayout(scroll_content)
+
+        scroll_area.setWidget(scroll_content)
 
         # ------------------------------------------------------------
         # Reconstruction mode
@@ -38,15 +46,11 @@ class PointCloudToMeshWindow(QDialog):
 
         self.reconstruction_method = QComboBox()
         self.reconstruction_method.addItem(
-            "Cave Smooth - recommended",
+            "Ball Pivoting",
             "cave_smooth",
         )
         self.reconstruction_method.addItem(
-            "Cave Realistic - keeps more holes/detail",
-            "cave_realistic",
-        )
-        self.reconstruction_method.addItem(
-            "Poisson Watertight - repair mode",
+            "Poisson",
             "poisson",
         )
 
@@ -85,11 +89,15 @@ class PointCloudToMeshWindow(QDialog):
         preprocess_form = QFormLayout(preprocess_group)
 
         self.downsample_size = self._doublespinbox(0.0, 10000.0, 0.005, 4)
+        self.max_points_for_poisson_label = QLabel("Max points for Poisson:")
         self.max_points_for_poisson = self._spinbox(0, 30_000_000)
         self.spacing_sample_size = self._spinbox(1_000, 5_000_000)
 
         preprocess_form.addRow("Downsample voxel size:", self.downsample_size)
-        preprocess_form.addRow("Max points for Poisson:", self.max_points_for_poisson)
+        preprocess_form.addRow(
+            self.max_points_for_poisson_label,
+            self.max_points_for_poisson,
+        )
         preprocess_form.addRow("Spacing sample size:", self.spacing_sample_size)
 
         # ------------------------------------------------------------
@@ -179,7 +187,9 @@ class PointCloudToMeshWindow(QDialog):
         layout.addWidget(self.cave_group)
         layout.addWidget(self.poisson_group)
         layout.addWidget(output_group)
-        layout.addLayout(buttons)
+
+        main_layout.addWidget(scroll_area)
+        main_layout.addLayout(buttons)
 
     def _connect(self) -> None:
         self.cancel_button.clicked.connect(self.reject)
@@ -196,21 +206,19 @@ class PointCloudToMeshWindow(QDialog):
         method = self.reconstruction_method.currentData()
 
         is_poisson = method == "poisson"
-        is_cave = method in {"cave_smooth", "cave_realistic"}
+        is_cave = method == "cave_smooth"
 
         self.cave_group.setVisible(is_cave)
         self.poisson_group.setVisible(is_poisson)
 
-        # Cave presets
-        if method == "cave_realistic":
-            self.fill_small_holes.setChecked(False)
-            self.smoothing_iterations.setValue(0)
+        self.max_points_for_poisson_label.setVisible(is_poisson)
+        self.max_points_for_poisson.setVisible(is_poisson)
 
-        elif method == "cave_smooth":
+        if is_cave:
             self.fill_small_holes.setChecked(True)
             self.smoothing_iterations.setValue(1)
 
-        elif method == "poisson":
+        elif is_poisson:
             self.smoothing_iterations.setValue(0)
 
         self.max_hole_size.setEnabled(self.fill_small_holes.isChecked())

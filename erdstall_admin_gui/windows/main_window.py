@@ -317,7 +317,7 @@ class MainWindow(QMainWindow):
         self._fill_thread.finished.connect(self._on_fill_holes_finished)
 
         self._fill_thread.start()
-        self._task_log_window.exec()
+        self._task_log_window.show()
 
     def _on_fill_holes_success(self, message: str) -> None:
         if self._task_log_window is not None:
@@ -367,7 +367,7 @@ class MainWindow(QMainWindow):
         self._patch_thread.finished.connect(self._on_patch_detection_finished)
 
         self._patch_thread.start()
-        self._task_log_window.exec()
+        self._task_log_window.show()
     
     def _on_patch_detection_success(self, message: str) -> None:
         if self._task_log_window is not None:
@@ -466,7 +466,7 @@ class MainWindow(QMainWindow):
         self._full_pipeline_thread.finished.connect(self._on_full_pipeline_finished)
 
         self._full_pipeline_thread.start()
-        self._task_log_window.exec()
+        self._task_log_window.show()
 
     def _on_full_pipeline_success(self, message: str) -> None:
         if self._task_log_window is not None:
@@ -550,7 +550,7 @@ class MainWindow(QMainWindow):
         self._glb_thread.finished.connect(self._on_glb_finished)
 
         self._glb_thread.start()
-        self._task_log_window.exec()
+        self._task_log_window.show()
 
     def _on_glb_success(self, message: str) -> None:
         if self._task_log_window is not None:
@@ -626,7 +626,7 @@ class MainWindow(QMainWindow):
         self._point_cloud_thread.finished.connect(self._on_point_cloud_to_mesh_finished)
 
         self._point_cloud_thread.start()
-        self._task_log_window.exec()
+        self._task_log_window.show()
 
     def _on_point_cloud_to_mesh_success(self, message: str) -> None:
         if self._task_log_window is not None:

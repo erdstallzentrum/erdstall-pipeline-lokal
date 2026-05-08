@@ -279,24 +279,12 @@ def _orient_normals_safely(
         log("Skipping normal orientation.")
         return
 
-    point_count = len(pcd.points)
     requested_k = int(settings.orient_normals_k)
 
-    if point_count > 1_500_000:
-        safe_k = min(requested_k, 12)
-    elif point_count > 750_000:
-        safe_k = min(requested_k, 16)
-    elif point_count > 250_000:
-        safe_k = min(requested_k, 20)
-    else:
-        safe_k = requested_k
-
-    safe_k = max(8, safe_k)
-
-    log(f"Orienting normals consistently, k={safe_k}...")
+    log(f"Orienting normals consistently, k={requested_k}...")
 
     try:
-        pcd.orient_normals_consistent_tangent_plane(safe_k)
+        pcd.orient_normals_consistent_tangent_plane(requested_k)
         log("Normal orientation done.")
         return
     except Exception as e:
@@ -641,17 +629,19 @@ def _point_cloud_to_mesh_poisson(
 
     points = np.asarray(pcd.points, dtype=np.float64)
 
-    log("Recomputing KDTree after densification...")
-    tree = cKDTree(points)
+    if getattr(settings, "densify_point_cloud", False):
 
-    avg_spacing = _estimate_average_spacing(
-        points=points,
-        tree=tree,
-        log=log,
-        sample_size=int(settings.spacing_sample_size),
-    )
+        log("Recomputing KDTree after densification...")
+        tree = cKDTree(points)
 
-    log(f"Average point spacing after densification: {avg_spacing:.6f}")
+        avg_spacing = _estimate_average_spacing(
+            points=points,
+            tree=tree,
+            log=log,
+            sample_size=int(settings.spacing_sample_size),
+        )
+
+        log(f"Average point spacing after densification: {avg_spacing:.6f}")
 
     normal_radius, normal_max_nn = _safe_normal_settings(
         point_count=point_count,
@@ -950,17 +940,18 @@ def _point_cloud_to_mesh_ball_pivoting(
     if points.shape[0] < 3:
         raise ValueError("Need at least 3 points after densification.")
 
-    log("Recomputing KDTree after densification...")
-    tree = cKDTree(points)
+    if getattr(settings, "densify_point_cloud", False):
+        log("Recomputing KDTree after densification...")
+        tree = cKDTree(points)
 
-    avg_spacing = _estimate_average_spacing(
-        points=points,
-        tree=tree,
-        log=log,
-        sample_size=int(settings.spacing_sample_size),
-    )
+        avg_spacing = _estimate_average_spacing(
+            points=points,
+            tree=tree,
+            log=log,
+            sample_size=int(settings.spacing_sample_size),
+        )
 
-    log(f"Average point spacing after densification: {avg_spacing:.6f}")
+        log(f"Average point spacing after densification: {avg_spacing:.6f}")
 
     # ------------------------------------------------------------
     # Normals

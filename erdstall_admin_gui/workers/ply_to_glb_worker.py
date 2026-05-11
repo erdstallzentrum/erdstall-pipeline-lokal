@@ -1,28 +1,30 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 import math
 
 import numpy as np
 import trimesh
-from PySide6.QtCore import QObject, Signal, Slot
 
+from erdstall_admin_gui.workers.cancelable_worker import CancelableWorker, CancellationToken
 from erdstall_pipeline.config import FINAL_MESH, PLY_DIR, BASE_DIR
 from erdstall_pipeline.settings.glb_export_settings import GlbExportSettings
 
+CancelCallback = Callable[[], None] | None
 
-class PlyToGlbWorker(QObject):
-    finished = Signal()
-    error = Signal(str)
-    log = Signal(str)
-    success = Signal(str)
+def _check_cancelled(cancel_callback: CancelCallback) -> None:
+    if cancel_callback is not None:
+        cancel_callback()
 
+class PlyToGlbWorker(CancelableWorker):
     def __init__(
         self,
         mesh_id: str,
         settings: GlbExportSettings | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> None:
-        super().__init__()
+        super().__init__(cancel_token)
 
         self.mesh_id = mesh_id
         self.settings = settings or GlbExportSettings()
@@ -42,6 +44,7 @@ class PlyToGlbWorker(QObject):
             input_path: Path,
             output_path: Path,
             label: str,
+            cancel_callback: CancelCallback = None
     ) -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -50,7 +53,7 @@ class PlyToGlbWorker(QObject):
 
         self.log.emit(f"Reading {label} PLY file: {input_path}")
         loaded = trimesh.load(str(input_path), process=False)
-
+        _check_cancelled(cancel_callback)
         if isinstance(loaded, trimesh.Scene):
             if not loaded.geometry:
                 raise ValueError(f"Loaded {label} scene has no geometry.")
@@ -60,7 +63,7 @@ class PlyToGlbWorker(QObject):
 
         if not isinstance(mesh, trimesh.Trimesh):
             raise ValueError(f"Loaded {label} file is not a valid mesh.")
-
+        _check_cancelled(cancel_callback)
         if len(mesh.faces) == 0:
             raise ValueError(
                 f"{label} PLY file is only a point cloud. "
@@ -71,7 +74,7 @@ class PlyToGlbWorker(QObject):
             f"Loaded {label} mesh: {len(mesh.vertices):,} vertices, "
             f"{len(mesh.faces):,} faces."
         )
-
+        _check_cancelled(cancel_callback)
         self.log.emit(f"Forcing {label} mesh vertex colors to opaque...")
         self._force_vertex_colors_opaque(mesh)
 
@@ -83,19 +86,19 @@ class PlyToGlbWorker(QObject):
         )
 
         geometries: list[tuple[str, trimesh.Trimesh]] = [(label, mesh)]
-
+        _check_cancelled(cancel_callback)
         if self.add_human_scale:
             if self.human_model_path.exists():
                 self.log.emit(
                     f"Loading human scale model for {label}: {self.human_model_path}"
                 )
-
+                _check_cancelled(cancel_callback)
                 human_geometries = self._load_human_model(
                     human_path=self.human_model_path,
                     target_height=self.human_height,
                     up_axis=self.human_up_axis,
                 )
-
+                _check_cancelled(cancel_callback)
                 self._place_human_next_to_mesh(
                     human_geometries=human_geometries,
                     mesh=mesh,
@@ -114,7 +117,7 @@ class PlyToGlbWorker(QObject):
                 )
         else:
             self.log.emit(f"Human scale model disabled for {label}.")
-
+        _check_cancelled(cancel_callback)
         self._apply_export_rotation(geometries)
 
         self.log.emit(f"Building {label} GLB scene...")
@@ -122,22 +125,22 @@ class PlyToGlbWorker(QObject):
 
         for name, geometry in geometries:
             scene.add_geometry(geometry, geom_name=name)
-
+        _check_cancelled(cancel_callback)
         self.log.emit(f"Saving {label} double-sided opaque GLB file: {output_path}")
         glb_bytes = trimesh.exchange.gltf.export_glb(
             scene,
             include_normals=True,
             tree_postprocessor=self._make_double_sided_opaque,
         )
-
+        _check_cancelled(cancel_callback)
         output_path.write_bytes(glb_bytes)
 
         self.log.emit(f"{label} GLB saved: {output_path}")
 
-    def _force_vertex_colors_opaque(self, mesh: trimesh.Trimesh) -> None:
+    def _force_vertex_colors_opaque(self, mesh: trimesh.Trimesh,cancel_callback: CancelCallback = None) -> None:
         if not hasattr(mesh.visual, "vertex_colors"):
             return
-
+        _check_cancelled(cancel_callback)
         vertex_colors = np.asarray(mesh.visual.vertex_colors)
 
         if vertex_colors.size == 0:
@@ -147,7 +150,7 @@ class PlyToGlbWorker(QObject):
 
         if vertex_colors.ndim != 2:
             return
-
+        _check_cancelled(cancel_callback)
         if vertex_colors.shape[1] == 3:
             alpha = np.full(
                 (vertex_colors.shape[0], 1),
@@ -157,7 +160,7 @@ class PlyToGlbWorker(QObject):
             vertex_colors = np.hstack((vertex_colors, alpha))
         elif vertex_colors.shape[1] >= 4:
             vertex_colors[:, 3] = 255
-
+        _check_cancelled(cancel_callback)
         mesh.visual.vertex_colors = vertex_colors
 
     def _clean_mesh(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
@@ -254,7 +257,7 @@ class PlyToGlbWorker(QObject):
 
         for geometry in geometries:
             geometry.apply_scale(scale)
-            self._force_vertex_colors_opaque(geometry)
+            self._force_vertex_colors_opaque(geometry, cancel_callback=self.check_cancelled)
 
         return geometries
 
@@ -380,50 +383,53 @@ class PlyToGlbWorker(QObject):
 
         return tree
 
-    @Slot()
-    def run(self) -> None:
-        try:
-            self.log.emit("Starting PLY to GLB conversion...")
+    def execute(self) -> str:
+        self.write_log("Starting PLY to GLB conversion...")
 
-            project_dir = Path(PLY_DIR) / self.mesh_id
+        project_dir = Path(PLY_DIR) / self.mesh_id
 
-            final_input_path = project_dir / FINAL_MESH
-            final_output_path = project_dir / "mesh.glb"
+        final_input_path = project_dir / FINAL_MESH
+        final_output_path = project_dir / "mesh.glb"
 
-            self._export_glb(
-                input_path=final_input_path,
-                output_path=final_output_path,
-                label="main",
+        self.check_cancelled()
+
+        self._export_glb(
+            input_path=final_input_path,
+            output_path=final_output_path,
+            label="main",
+            cancel_callback=self.check_cancelled,
+        )
+
+        success_message = f"Successfully saved GLB file to {final_output_path}"
+
+        self.check_cancelled()
+
+        if self.create_mobile_glb:
+            mobile_input_path = final_input_path.with_name(
+                f"{final_input_path.stem}_mobile{final_input_path.suffix}"
             )
+            mobile_output_path = project_dir / "mesh_mobile.glb"
 
-            success_message = f"Successfully saved GLB file to {final_output_path}"
+            self.write_log("Mobile GLB export enabled.")
 
-            if self.create_mobile_glb:
-                mobile_input_path = final_input_path.with_name(
-                    f"{final_input_path.stem}_mobile{final_input_path.suffix}"
+            if not mobile_input_path.exists():
+                self.write_log(
+                    f"Mobile mesh not found, skipping mobile GLB: {mobile_input_path}"
                 )
-                mobile_output_path = project_dir / "mesh_mobile.glb"
-
-                self.log.emit("Mobile GLB export enabled.")
-
-                if not mobile_input_path.exists():
-                    self.log.emit(
-                        f"Mobile mesh not found, skipping mobile GLB: {mobile_input_path}"
-                    )
-                else:
-                    self._export_glb(
-                        input_path=mobile_input_path,
-                        output_path=mobile_output_path,
-                        label="mobile",
-                    )
-
-                    success_message += f"\nSuccessfully saved mobile GLB file to {mobile_output_path}"
             else:
-                self.log.emit("Mobile GLB export disabled.")
+                self._export_glb(
+                    input_path=mobile_input_path,
+                    output_path=mobile_output_path,
+                    label="mobile",
+                    cancel_callback=self.check_cancelled,
+                )
 
-            self.success.emit(success_message)
+                success_message += (
+                    f"\nSuccessfully saved mobile GLB file to {mobile_output_path}"
+                )
+        else:
+            self.write_log("Mobile GLB export disabled.")
 
-        except Exception as e:
-            self.error.emit(str(e))
-        finally:
-            self.finished.emit()
+        self.check_cancelled()
+
+        return success_message

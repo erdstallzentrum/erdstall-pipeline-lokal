@@ -6,7 +6,7 @@ from pathlib import Path
 
 @dataclass
 class GlbExportSettings:
-    add_human_scale: bool = True
+    add_human_scale: bool = False
     human_model_path: str | Path = "public/person.glb"
     human_height: float = 1.75
     human_floor_offset: float = 0.02

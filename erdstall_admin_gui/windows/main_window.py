@@ -46,6 +46,7 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
 
         self._fill_cancel_token = None
         self._full_pipeline_cancel_token  = None
+        self._glb_cancel_token = None
 
         self.current_mesh_id: str | None = None
         self._init_thread: QThread | None  = None
@@ -452,11 +453,9 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
             QMessageBox.warning(self, "No project selected", "Please select a project first.")
             return
 
-        if self._glb_thread is not None:
-            QMessageBox.information(self, "Busy", "GLB export is already running.")
-            return
+        mesh_id = self.current_mesh_id
 
-        mesh_path = Path(PLY_DIR) / self.current_mesh_id / FINAL_MESH
+        mesh_path = Path(PLY_DIR) / mesh_id / FINAL_MESH
 
         if not mesh_path.exists():
             QMessageBox.warning(
@@ -467,57 +466,33 @@ class MainWindow(QMainWindow, LoggedCancelableTaskRunnerMixin):
             return
 
         dialog = GlbExportWindow(self)
+
         if not dialog.exec():
             return
 
         settings = dialog.get_settings()
 
-        self._task_log_window = TaskLogWindow(
-            f"Export GLB - {self.current_mesh_id}",
-            self,
+        self._start_logged_cancelable_task(
+            task_title=f"Export GLB - {mesh_id}",
+            busy_message="GLB export is already running.",
+            running_message="Exporting PLY to GLB...",
+            thread_attr="_glb_thread",
+            worker_attr="_glb_worker",
+            cancel_token_attr="_glb_cancel_token",
+            worker_factory=lambda cancel_token: PlyToGlbWorker(
+                mesh_id,
+                settings=settings,
+                cancel_token=cancel_token,
+            ),
+            success_status="Export GLB completed.",
+            error_status="Export GLB failed.",
+            success_box_title="Export GLB",
+            error_box_title="Export GLB failed",
+            on_success=self._after_glb_success,
         )
 
-        self._task_log_window.set_running("Exporting PLY to GLB...")
-
-        self._glb_thread = QThread()
-        self._glb_worker = PlyToGlbWorker(
-            self.current_mesh_id,
-            settings=settings,
-        )
-
-        self._glb_worker.moveToThread(self._glb_thread)
-
-        self._glb_thread.started.connect(self._glb_worker.run)
-        self._glb_worker.log.connect(self._task_log_window.append_log)
-        self._glb_worker.success.connect(self._on_glb_success)
-        self._glb_worker.error.connect(self._on_glb_error)
-        self._glb_worker.finished.connect(self._glb_thread.quit)
-        self._glb_worker.finished.connect(self._glb_worker.deleteLater)
-        self._glb_thread.finished.connect(self._glb_thread.deleteLater)
-        self._glb_thread.finished.connect(self._on_glb_finished)
-
-        self._glb_thread.start()
-        self._task_log_window.show()
-
-    def _on_glb_success(self, message: str) -> None:
-        if self._task_log_window is not None:
-            self._task_log_window.append_log(f"[SUCCESS] {message}")
-            self._task_log_window.set_success("Export GLB completed.")
-            self._task_log_window.accept()
-
+    def _after_glb_success(self, message: str) -> None:
         self.home_page.refresh_project_info()
-        QMessageBox.information(self, "Export GLB", message)
-
-    def _on_glb_error(self, message: str) -> None:
-        if self._task_log_window is not None:
-            self._task_log_window.append_log(f"[ERROR] {message}")
-            self._task_log_window.set_error("Export GLB failed.")
-        QMessageBox.critical(self, "Export GLB", message)
-
-    def _on_glb_finished(self) -> None:
-        self._glb_thread = None
-        self._glb_worker = None
-        self._task_log_window = None
 
     def start_point_cloud_to_mesh(self) -> None:
         if not self.current_mesh_id:

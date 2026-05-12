@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 from collections.abc import Callable
 import os
 
@@ -12,7 +13,6 @@ from .settings.point_cloud_settings import PointCloudSettings
 
 LogCallback = Callable[[str], None] | None
 CancelCallback = Callable[[], None] | None
-
 
 def _check_cancelled(cancel_callback: CancelCallback) -> None:
     if cancel_callback is not None:
@@ -237,83 +237,251 @@ def _estimate_normals_safely(
     normal_radius: float,
     normal_max_nn: int,
     log: Callable[[str], None],
+    settings: PointCloudSettings | None,
+    cancel_callback: CancelCallback = None,
 ) -> None:
+    if settings is None:
+        settings = PointCloudSettings()
+
     point_count = len(pcd.points)
 
     if point_count < 3:
         raise ValueError("Need at least 3 points to estimate normals.")
 
+    points = np.asarray(pcd.points, dtype=np.float64)
+
+    chunk_size = max(
+        1_000,
+        int(
+            getattr(
+                settings,
+                "normal_chunk_size",
+                getattr(settings, "NORMAL_CHUNK_SIZE", 10_000),
+            )
+        ),
+    )
+
+    normal_max_nn = min(
+        int(normal_max_nn),
+        int(getattr(settings, "chunked_normal_max_nn", 80)),
+    )
+
+    query_k = min(normal_max_nn + 1, point_count)
+
     log(
-        f"Estimating point-cloud normals: "
+        f"Estimating cave point-cloud normals in chunks: "
         f"points={point_count:,}, "
+        f"chunk_size={chunk_size:,}, "
         f"radius={normal_radius:.6f}, "
         f"max_nn={normal_max_nn}..."
     )
 
-    try:
-        pcd.estimate_normals(
-            search_param=o3d.geometry.KDTreeSearchParamHybrid(
-                radius=float(normal_radius),
-                max_nn=int(normal_max_nn),
-            )
+    _check_cancelled(cancel_callback)
+
+    log("Building KDTree for cave normal estimation...")
+    tree = cKDTree(points)
+
+    _check_cancelled(cancel_callback)
+
+    log("Allocating Open3D normal buffer...")
+    pcd.normals = o3d.utility.Vector3dVector(
+        np.zeros((point_count, 3), dtype=np.float64)
+    )
+    normals_view = np.asarray(pcd.normals)
+
+    _check_cancelled(cancel_callback)
+
+    for start in range(0, point_count, chunk_size):
+        _check_cancelled(cancel_callback)
+
+        end = min(start + chunk_size, point_count)
+        chunk_points = np.ascontiguousarray(points[start:end])
+
+        distances, indices = _query_tree(
+            tree,
+            chunk_points,
+            k=query_k,
+            workers=1,
         )
-    except RuntimeError as e:
-        log(f"Hybrid normal estimation failed: {e}")
-        log("Retrying normal estimation with KNN search...")
 
-        pcd.estimate_normals(
-            search_param=o3d.geometry.KDTreeSearchParamKNN(
-                knn=int(normal_max_nn),
-            )
+        distances = np.asarray(distances)
+        indices = np.asarray(indices)
+
+        if distances.ndim == 1:
+            distances = distances.reshape(-1, 1)
+
+        if indices.ndim == 1:
+            indices = indices.reshape(-1, 1)
+
+        neighbors = points[indices]
+
+        radius_mask = np.isfinite(distances)
+        radius_mask &= distances > 0
+        radius_mask &= distances <= float(normal_radius)
+
+        knn_mask = np.isfinite(distances)
+        knn_mask &= distances > 0
+
+        radius_counts = radius_mask.sum(axis=1)
+
+        mask = radius_mask.copy()
+
+        fallback_rows = radius_counts < 3
+        if np.any(fallback_rows):
+            mask[fallback_rows] = knn_mask[fallback_rows]
+
+        counts = mask.sum(axis=1)
+        valid_rows = counts >= 3
+
+        chunk_normals = np.zeros((end - start, 3), dtype=np.float64)
+        chunk_normals[:, 2] = 1.0
+
+        if np.any(valid_rows):
+            valid_neighbors = neighbors[valid_rows]
+            valid_mask = mask[valid_rows]
+            valid_counts = counts[valid_rows].astype(np.float64)
+
+            weighted_neighbors = valid_neighbors * valid_mask[:, :, None]
+            centroids = weighted_neighbors.sum(axis=1) / valid_counts[:, None]
+
+            centered = valid_neighbors - centroids[:, None, :]
+            centered *= valid_mask[:, :, None]
+
+            covariance = np.einsum(
+                "nki,nkj->nij",
+                centered,
+                centered,
+            ) / valid_counts[:, None, None]
+
+            _check_cancelled(cancel_callback)
+
+            _, eigenvectors = np.linalg.eigh(covariance)
+
+            estimated = eigenvectors[:, :, 0]
+
+            lengths = np.linalg.norm(estimated, axis=1)
+            safe = lengths > 0
+
+            estimated[safe] /= lengths[safe, None]
+
+            chunk_normals[valid_rows] = estimated
+
+
+        normals_view[start:end] = chunk_normals
+
+        percent = end / point_count * 100.0
+        log(
+            f"Cave normal estimation progress: "
+            f"{end:,} / {point_count:,} ({percent:.1f}%)"
         )
 
-    try:
-        pcd.normalize_normals()
-    except Exception:
-        pass
+        del (
+            chunk_points,
+            distances,
+            indices,
+            neighbors,
+            radius_mask,
+            knn_mask,
+            mask,
+            counts,
+            valid_rows,
+            chunk_normals,
+        )
 
-    log("Normal estimation done.")
+        if start % (chunk_size * 20) == 0:
+            gc.collect()
+
+    _check_cancelled(cancel_callback)
+
+    log("Cave normal estimation chunks done.")
+    log("Cave normals estimated. Run consistent orientation next.")
 
 
 def _orient_normals_safely(
     pcd: o3d.geometry.PointCloud,
     settings: PointCloudSettings,
     log: Callable[[str], None],
+    cancel_callback: CancelCallback = None,
 ) -> None:
-    if not settings.orient_normals:
+    if not getattr(settings, "orient_normals", True):
         log("Skipping normal orientation.")
         return
 
-    requested_k = int(settings.orient_normals_k)
+    if pcd.is_empty():
+        raise ValueError("Cannot orient normals: point cloud is empty.")
 
-    log(f"Orienting normals consistently, k={requested_k}...")
+    point_count = len(pcd.points)
 
-    try:
-        pcd.orient_normals_consistent_tangent_plane(requested_k)
-        log("Normal orientation done.")
-        return
-    except Exception as e:
-        log(f"Consistent normal orientation failed: {e}")
+    if point_count < 3:
+        raise ValueError("Cannot orient normals: need at least 3 points.")
 
-    log("Trying fallback normal orientation...")
+    _check_cancelled(cancel_callback)
 
-    try:
-        bbox = pcd.get_axis_aligned_bounding_box()
-        center = bbox.get_center()
-        extent = bbox.get_extent()
-        camera_location = center + np.array(
-            [0.0, 0.0, float(max(extent)) * 2.0],
-            dtype=np.float64,
-        )
+    requested_k = int(getattr(settings, "orient_normals_k", 60))
+    requested_k = max(6, min(requested_k, point_count - 1))
 
-        pcd.orient_normals_towards_camera_location(camera_location)
-        log("Fallback normal orientation done.")
-    except Exception as fallback_error:
-        raise RuntimeError(
-            "Normal orientation failed. Poisson reconstruction would likely "
-            "produce a bad/blobby mesh. Try lowering Orient Normals K, cleaning "
-            "the point cloud, or using Ball Pivoting."
-        ) from fallback_error
+    candidate_k_values = [
+        requested_k,
+        120,
+        100,
+        80,
+        60,
+        40,
+        30,
+        20,
+        10,
+    ]
+
+    cleaned_k_values: list[int] = []
+    for k in candidate_k_values:
+        k = int(k)
+
+        if k < 6:
+            continue
+
+        if k >= point_count:
+            k = point_count - 1
+
+        if k not in cleaned_k_values:
+            cleaned_k_values.append(k)
+
+    if not cleaned_k_values:
+        raise ValueError("No valid k value available for normal orientation.")
+
+    log(
+        "Orienting cave normals consistently. "
+        "This can take a long time on large point clouds."
+    )
+
+    last_error: Exception | None = None
+
+    for k in cleaned_k_values:
+        _check_cancelled(cancel_callback)
+
+        try:
+            log(f"Running Open3D consistent normal orientation, k={k}...")
+
+            pcd.orient_normals_consistent_tangent_plane(k)
+
+            _check_cancelled(cancel_callback)
+
+            try:
+                pcd.normalize_normals()
+            except Exception as normalize_error:
+                log(f"Normal normalization after orientation skipped: {normalize_error}")
+
+            log(f"Cave normal orientation done with k={k}.")
+            return
+
+        except Exception as e:
+            last_error = e
+            log(f"Normal orientation failed with k={k}: {e}")
+
+    raise RuntimeError(
+        "Cave normal orientation failed for all tested k values. "
+        "Try cleaning/downsampling the point cloud more, lowering orient_normals_k, "
+        "or using Ball Pivoting with normal orientation disabled."
+    ) from last_error
 
 
 def _safe_poisson_depth(
@@ -668,6 +836,8 @@ def _point_cloud_to_mesh_poisson(
         normal_radius=normal_radius,
         normal_max_nn=normal_max_nn,
         log=log,
+        cancel_callback=cancel_callback,
+        settings=settings,
     )
     _check_cancelled(cancel_callback)
     _orient_normals_safely(
@@ -983,6 +1153,8 @@ def _point_cloud_to_mesh_ball_pivoting(
         normal_radius=normal_radius,
         normal_max_nn=normal_max_nn,
         log=log,
+        cancel_callback=cancel_callback,
+        settings=settings,
     )
     _check_cancelled(cancel_callback)
     _orient_normals_safely(

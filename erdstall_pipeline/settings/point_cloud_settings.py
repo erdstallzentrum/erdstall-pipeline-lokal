@@ -55,3 +55,5 @@ class PointCloudSettings:
     densify_k: int = 8
     densify_max_edge_factor: float = 2.5
     densify_max_new_points: int = 500_000
+
+    NORMAL_CHUNK_SIZE = 50_000

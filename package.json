@@ -1,0 +1,10 @@
+{
+  "name": "erdstall-pipeline-lokal",
+  "private": true,
+  "devDependencies": {
+    "@gltf-transform/cli": "^4.1.4"
+  },
+  "scripts": {
+    "gltf-transform": "gltf-transform"
+  }
+}

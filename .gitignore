@@ -38,10 +38,6 @@ dist/
 # Data / pipeline outputs (IMPORTANT for your project)
 
 data/
-*.ply
-*.raw
-*.json
-*.csv
 
 # Temporary files
 

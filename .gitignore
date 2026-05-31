@@ -70,3 +70,7 @@ temp/
 
 node_modules/
 
+build
+dist
+ErdstallAdmin.spec
+

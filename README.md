@@ -284,14 +284,9 @@ On Linux, make sure the file has execute permission.
 Start the desktop application with:
 
 ```bash
-python main.py
+python -m erdstall_admin_gui.main
 ```
 
-On Windows, this also works:
-
-```bash
-py main.py
-```
 
 ---
 
@@ -540,9 +535,6 @@ The final GLB export.
 
 Metadata for detected patches.
 
-## `patches/`
-
-Folder containing exported patch meshes.
 
 ## `path_points.csv`
 
@@ -794,41 +786,3 @@ PATH_JSON_FILENAME = "path.json"
 
 SIZE = 180
 ```
-
----
-
-# Safety notes
-
-Always keep a backup of the original scan.
-
-The app may overwrite generated files such as:
-
-```text
-repaired_mesh.ply
-mesh.ply
-mesh_mobile.ply
-mesh.glb
-patches.json
-path.csv
-path.json
-```
-
-Do not use generated files as your only copy of the scan.
-
----
-
-# License
-
-Add your license here.
-
-Example:
-
-```text
-MIT License
-```
-
----
-
-# Author
-
-Erdstall Admin Local Pipeline

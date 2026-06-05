@@ -5,7 +5,7 @@ from erdstall_pipeline.config import FINAL_MESH, ORIGINAL_MESH, PLY_DIR, REPAIRE
 from erdstall_pipeline.fill_holes import fill_holes
 from erdstall_pipeline.settings.fill_holes_settings import FillHolesSettings
 from erdstall_pipeline.reduce_meshes import reduce_file_size
-from erdstall_pipeline.utils import ensure_dir, validate_mesh_id
+from erdstall_pipeline.utils.validations import ensure_dir, validate_mesh_id
 
 from collections.abc import Callable
 

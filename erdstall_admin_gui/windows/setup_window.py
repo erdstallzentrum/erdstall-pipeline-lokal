@@ -79,18 +79,28 @@ class SetupWindow(QWidget):
 
     def _browse(self) -> None:
         if sys.platform == "darwin":
-            path = QFileDialog.getExistingDirectory(
-                self,
-                "Select Fiji.app folder",
-                "/Applications",
-            )
+            dialog = QFileDialog(self, "Select Fiji.app folder")
+            dialog.setDirectory("/Applications")
+            dialog.setFileMode(QFileDialog.FileMode.Directory)
+            dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+            dialog.setOption(QFileDialog.Option.ShowDirsOnly, False)
+
+            if dialog.exec():
+                selected = dialog.selectedFiles()
+                if selected:
+                    self.fiji_path_edit.setText(selected[0])
+
         elif sys.platform.startswith("win"):
             path, _ = QFileDialog.getOpenFileName(
                 self,
                 "Select Fiji executable",
                 "",
-                "Executable (*.exe);;All files (*)",
+                "Fiji executable (*.exe);;All files (*)",
             )
+
+            if path:
+                self.fiji_path_edit.setText(path)
+
         else:
             path, _ = QFileDialog.getOpenFileName(
                 self,
@@ -99,8 +109,8 @@ class SetupWindow(QWidget):
                 "Executable (*) ; All files (*)",
             )
 
-        if path:
-            self.fiji_path_edit.setText(path)
+            if path:
+                self.fiji_path_edit.setText(path)
 
     def _download_fiji(self)-> None:
         url = QUrl("https://imagej.net/software/fiji/downloads")
@@ -114,10 +124,19 @@ class SetupWindow(QWidget):
             self._log("No path selected")
             return
 
-        path = Path(path_text).expanduser()
+        selected_path = Path(path_text).expanduser()
 
-        AppSettings.set_fiji_exe(path)
-        self._log(f"Saved Fiji path: {path}")
+        try:
+            resolved_path = SetupWorker.resolve_fiji_executable(selected_path)
+        except Exception as e:
+            self._log(f"[ERROR] Could not resolve Fiji path: {e}")
+            self.status_label.setText("Failed")
+            return
+
+        AppSettings.set_fiji_exe(resolved_path)
+
+        self.fiji_path_edit.setText(str(resolved_path))
+        self._log(f"Saved Fiji executable: {resolved_path}")
         self.status_label.setText("Saved")
 
 

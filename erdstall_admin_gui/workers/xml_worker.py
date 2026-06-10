@@ -3,10 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import xml.etree.ElementTree as ET
 from PySide6.QtCore import  Signal
-
-from config import PLY_DIR, XML_NAMESPACE, XSI_NAMESPACE, XML_SCHEMA_LOCATION
 from erdstall_admin_gui.workers.cancelable_worker import CancelableWorker, CancellationToken
-from erdstall_pipeline.config import XML_FILENAME
+from erdstall_pipeline.config import XML_FILENAME, PLY_DIR, XML_NAMESPACE, XSI_NAMESPACE, XML_SCHEMA_LOCATION
 
 class CreateXMLWorker(CancelableWorker):
     success = Signal(str)

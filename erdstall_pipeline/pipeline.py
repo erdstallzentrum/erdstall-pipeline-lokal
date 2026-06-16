@@ -141,6 +141,6 @@ def run_finalize(mesh_id: str) -> Path:
     if not repaired.exists():
         raise PipelineError(f"Missing repaired mesh: {repaired}")
 
-    shutil.copy2(repaired, final_mesh)
+    shutil.move(str(repaired), str(final_mesh))
 
     return final_mesh

@@ -15,7 +15,7 @@ from erdstall_admin_gui.workers.cancelable_worker import (
     CancelableWorker,
     CancellationToken,
 )
-from erdstall_pipeline.config import FINAL_MESH, PLY_DIR, BASE_DIR
+from erdstall_pipeline.config import FINAL_MESH, PLY_DIR, BASE_DIR, MESH_GLB, MESH_MOBILE_GLB
 from erdstall_pipeline.settings.glb_export_settings import GlbExportSettings
 
 
@@ -649,7 +649,7 @@ class PlyToGlbWorker(CancelableWorker):
         project_dir = Path(PLY_DIR) / self.mesh_id
 
         final_input_path = project_dir / FINAL_MESH
-        final_output_path = project_dir / "mesh.glb"
+        final_output_path = project_dir / MESH_GLB
 
         self.check_cancelled()
 
@@ -668,7 +668,7 @@ class PlyToGlbWorker(CancelableWorker):
             mobile_input_path = final_input_path.with_name(
                 f"{final_input_path.stem}_mobile{final_input_path.suffix}"
             )
-            mobile_output_path = project_dir / "mesh_mobile.glb"
+            mobile_output_path = project_dir / MESH_MOBILE_GLB
 
             self.write_log("Mobile GLB export enabled.")
 

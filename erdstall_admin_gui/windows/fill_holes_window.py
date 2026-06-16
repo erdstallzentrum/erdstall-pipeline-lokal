@@ -113,7 +113,7 @@ class FillHolesWindow(QDialog):
 
 
         self.transfer_texture = QCheckBox("Transfer texture to vertex colors")
-        self.reduce_size = QCheckBox("Reduce file size after repair")
+        self.reduce_size = QCheckBox("Create mobile version")
         self.mesh_reduction_percent = self._doublespinbox(0.0, 95.0, 1.0, 5)
 
         output_form.addRow("Keep only largest component:", self.keep_largest_component)

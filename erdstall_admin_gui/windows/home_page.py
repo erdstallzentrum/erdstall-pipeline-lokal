@@ -14,15 +14,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from config import MESH_MOBILE, MESH_GLB, MESH_MOBILE_GLB
 from erdstall_pipeline.config import (
-    BACKUP_TEXTURE_DIR,
     FINAL_MESH,
     ORIGINAL_MESH,
     PATH_JSON_FILENAME,
     PATH_POINTS_FILENAME,
     PLY_DIR,
     REPAIRED_MESH,
-    TEXTURE_DIR, CONVERTED_MESH,
+     CONVERTED_MESH,
+    XML_FILENAME
 )
 
 from erdstall_admin_gui.widgets.flow_layout import FlowLayout
@@ -51,16 +52,6 @@ class HomePage(QWidget):
         title_layout = QVBoxLayout()
         title_layout.setSpacing(4)
 
-        self.title_label = QLabel("Erdstall Pipeline")
-        self.title_label.setStyleSheet("font-size: 24px; font-weight: 700;")
-
-        self.subtitle_label = QLabel("Project dashboard")
-        self.subtitle_label.setStyleSheet("font-size: 14px; color: #aaaaaa;")
-
-        title_layout.addWidget(self.title_label)
-        title_layout.addWidget(self.subtitle_label)
-
-        
         header_layout.addLayout(title_layout)
         header_layout.addStretch()
 
@@ -77,19 +68,19 @@ class HomePage(QWidget):
 
         self.status_grid = QGridLayout()
         self.status_grid.setHorizontalSpacing(24)
-        self.status_grid.setVerticalSpacing(9)
+        self.status_grid.setVerticalSpacing(10)
         overview_layout.addLayout(self.status_grid)
 
         self.status_labels: dict[str, QLabel] = {}
         self._add_status_row(0, "Original mesh")
         self._add_status_row(1, "Converted mesh")
-        self._add_status_row(2, "Repaired mesh")
-        self._add_status_row(3, "Final mesh")
-        self._add_status_row(4, "Mobile mesh")
-        self._add_status_row(5, "Textures folder")
-        self._add_status_row(6, "Texture backup")
-        self._add_status_row(7, "Path JSON")
-        self._add_status_row(8, "Path points CSV")
+        self._add_status_row(2, "Final mesh")
+        self._add_status_row(3, "Mobile mesh")
+        self._add_status_row(4, "Glb")
+        self._add_status_row(5, "Glb mobile")
+        self._add_status_row(6, "Path JSON")
+        self._add_status_row(7, "Path points CSV")
+        self._add_status_row(8, "XML metadata")
 
         main_layout.addWidget(overview_box)
 
@@ -99,7 +90,7 @@ class HomePage(QWidget):
         action_layout.setContentsMargins(16, 16, 16, 16)
         action_layout.setSpacing(12)
 
-        action_title = QLabel("Quick Actions")
+        action_title = QLabel("Actions")
         action_title.setStyleSheet("font-size: 16px; font-weight: 600;")
         action_layout.addWidget(action_title)
 
@@ -202,15 +193,15 @@ class HomePage(QWidget):
         converted_mesh = project_dir / CONVERTED_MESH
         repaired_mesh = project_dir / REPAIRED_MESH
         final_mesh = project_dir / FINAL_MESH
-        mobile_mesh = project_dir / "mesh_mobile.ply"
-        textures_dir = project_dir / TEXTURE_DIR
-        backup_dir = project_dir / BACKUP_TEXTURE_DIR
+        mobile_mesh = project_dir / MESH_MOBILE
+        glb = project_dir / MESH_GLB
+        glb_mobile = project_dir / MESH_MOBILE_GLB
         path_json = project_dir / PATH_JSON_FILENAME
         path_points_csv = project_dir / PATH_POINTS_FILENAME
+        xml_metadata = project_dir / XML_FILENAME
 
         original_exists = original_mesh.exists()
         converted_exists = converted_mesh.exists()
-        repaired_exists = repaired_mesh.exists()
         path_points_exists = path_points_csv.exists()
         final_exists = final_mesh.exists()
 
@@ -228,13 +219,13 @@ class HomePage(QWidget):
 
         if is_point_cloud:
             self._set_status("Converted mesh", converted_exists)
-        self._set_status("Repaired mesh", repaired_exists)
         self._set_status("Final mesh", final_exists)
         self._set_status("Mobile mesh", mobile_mesh.exists())
-        self._set_status("Textures folder", textures_dir.exists() and textures_dir.is_dir())
-        self._set_status("Texture backup", backup_dir.exists() and backup_dir.is_dir())
+        self._set_status("Glb", glb.exists() and glb.is_file())
+        self._set_status("Glb mobile", glb_mobile.exists() and glb_mobile.is_file())
         self._set_status("Path JSON", path_json.exists())
         self._set_status("Path points CSV", path_points_exists)
+        self._set_status("XML metadata", xml_metadata.exists() and xml_metadata.is_file())
 
 
         self._set_buttons_enabled(True)

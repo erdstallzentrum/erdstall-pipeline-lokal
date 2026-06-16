@@ -10,8 +10,11 @@ FILES_DIR = DATA_DIR / WORK_DIRNAME
 ORIGINAL_MESH = "original.ply"
 REPAIRED_MESH = "repaired_mesh.ply"
 FINAL_MESH = "mesh.ply"
+MESH_MOBILE = "mesh_mobile.ply"
 CONVERTED_MESH = "converted.ply"
 XML_FILENAME = "metadata.xml"
+MESH_GLB = "mesh.glb"
+MESH_MOBILE_GLB = "mesh_mobile.glb"
 
 TEXTURE_DIR = "mesh"
 BACKUP_TEXTURE_DIR = "textures_backup"

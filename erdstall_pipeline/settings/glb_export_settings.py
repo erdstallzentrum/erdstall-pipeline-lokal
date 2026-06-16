@@ -26,4 +26,4 @@ class GlbExportSettings:
 
     main_include_normals: bool = True
 
-    mobile_include_normals: bool = False
+    mobile_include_normals: bool = True

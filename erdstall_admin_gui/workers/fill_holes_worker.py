@@ -107,4 +107,4 @@ class FillHolesWorker(CancelableWorker):
         else:
             self.write_log("Skipping mobile mesh reduction.")
 
-        return f"Repaired mesh created: {repaired}\nFinal mesh created: {final_mesh}"
+        return f"Final mesh created: {final_mesh}"

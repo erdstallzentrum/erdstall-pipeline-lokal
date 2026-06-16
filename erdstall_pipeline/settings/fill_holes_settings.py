@@ -26,6 +26,6 @@ class FillHolesSettings:
     smooth_mesh_input: bool = False
     mesh_smoothing_iterations: int = 3
 
-    reduce_size: bool = False
+    reduce_size: bool = True
     mesh_reduction_percent: float = INITIAL_MESH_REDUCTION_FACTOR
-    keep_largest_component: bool = False
+    keep_largest_component: bool = True

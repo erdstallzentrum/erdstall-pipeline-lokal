@@ -36,7 +36,7 @@ textures_backup/    texture backup
 
 # Installation
 
-## macOS, recommended setup
+## macOS
 
 ### 1. Install Fiji / ImageJ
 
